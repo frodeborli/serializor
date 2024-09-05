@@ -51,6 +51,8 @@ class Serializor
             '/etc/hostid',
             '/etc/rc.conf',
             '/var/db/hostid',
+            'C:\ProgramData\Microsoft\Windows\DeviceMetadataCache\dmrc.idx',
+            'C:\Windows\System32\spp\store\2.0\tokens.dat',
             'C:\Windows\System32\drivers\etc\hosts',
             '/etc/hosts',
         ],
