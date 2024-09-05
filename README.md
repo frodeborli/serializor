@@ -90,7 +90,7 @@ Serializor is order of magnitude faster than Opis/Closure. It is slightly slower
 ## Installation
 
 ```bash
-composer require yourname/serializor
+composer require frodeborli/serializor
 ```
 
 ## Basic Usage
