@@ -1,7 +1,7 @@
 {
     "name": "frodeborli/serializor",
     "description": "PHP Serializor will serialize almost anything in PHP, including closures and anonymous classes.",
-    "keywords": ["SerializableClosure", "Opis/Closure", "Laravel/SerializableClosure", "closure"],
+    "keywords": ["SerializableClosure", "serialization", "serialize", "opis closure"],
     "type": "library",
     "require-dev": {
         "pestphp/pest": "^1.18"
