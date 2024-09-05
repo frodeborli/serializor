@@ -1,0 +1,72 @@
+{
+    "opis": {
+        "simple_closure": {
+            "serialize_time": 0.43384504318237305,
+            "unserialize_time": 0.04380512237548828,
+            "serialize_memory": 389696,
+            "unserialize_memory": 272216
+        },
+        "closure_with_use": {
+            "serialize_time": 0.4271430969238281,
+            "unserialize_time": 0.1302649974822998,
+            "serialize_memory": 320,
+            "unserialize_memory": 263304
+        },
+        "complex_closure": {
+            "serialize_time": 0.517786979675293,
+            "unserialize_time": 0.1145179271697998,
+            "serialize_memory": 320,
+            "unserialize_memory": 197856
+        },
+        "closure_with_object": {
+            "serialize_time": 0.23922991752624512,
+            "unserialize_time": 0.04974007606506348,
+            "serialize_memory": 384,
+            "unserialize_memory": 132776
+        },
+        "closure_with_nested_closures": {
+            "serialize_time": 1.501312017440796,
+            "unserialize_time": 0.2717890739440918,
+            "serialize_memory": -345928,
+            "unserialize_memory": 724040
+        }
+    },
+    "serializor": {
+        "simple_closure": {
+            "serialize_time": 0.14661598205566406,
+            "unserialize_time": 0.14131784439086914,
+            "serialize_memory": 560392,
+            "unserialize_memory": 2716640
+        },
+        "closure_with_use": {
+            "serialize_time": 0.1383659839630127,
+            "unserialize_time": 0.14367890357971191,
+            "serialize_memory": 3200,
+            "unserialize_memory": 3447952
+        },
+        "complex_closure": {
+            "serialize_time": 0.17469000816345215,
+            "unserialize_time": 0.16664409637451172,
+            "serialize_memory": 3232,
+            "unserialize_memory": -2630384
+        },
+        "closure_with_object": {
+            "serialize_time": 0.08388805389404297,
+            "unserialize_time": 0.04347801208496094,
+            "serialize_memory": 3216,
+            "unserialize_memory": 1846432
+        },
+        "complex_recursive_structure": {
+            "serialize_time": 0.0910329818725586,
+            "unserialize_time": 0.19750499725341797,
+            "serialize_memory": 7552,
+            "unserialize_memory": -2896664
+        },
+        "closure_with_nested_closures": {
+            "serialize_time": 0.13506507873535156,
+            "unserialize_time": 0.43712306022644043,
+            "serialize_memory": 6448,
+            "unserialize_memory": -913336
+        }
+    }
+}

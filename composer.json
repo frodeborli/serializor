@@ -1,0 +1,33 @@
+{
+    "name": "frodeborli/serializor",
+    "description": "PHP Serializor will serialize almost anything in PHP, including closures and anonymous classes.",
+    "keywords": ["SerializableClosure", "Opis/Closure", "Laravel/SerializableClosure", "closure"],
+    "type": "library",
+    "require-dev": {
+        "pestphp/pest": "^1.18"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Serializor\\": "src/"
+        },
+        "files": [
+            "Serializor.php"
+        ]
+    },
+    "authors": [
+        {
+            "name": "Frode Børli",
+            "email": "frode@ennerd.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": "^7.3|^8.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
