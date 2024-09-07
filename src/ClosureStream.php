@@ -46,6 +46,8 @@ class ClosureStream
 
     protected $pointer = 0;
 
+    public $context;
+
     function stream_open($path, $mode, $options, &$opened_path)
     {
         $this->content = "<?php\n" . substr($path, strlen(static::STREAM_PROTO . '://')) . ";";
@@ -119,5 +121,4 @@ class ClosureStream
             static::$isRegistered = stream_wrapper_register(static::STREAM_PROTO, __CLASS__);
         }
     }
-
- }
+}
