@@ -1,6 +1,7 @@
 <?php
 
-use Serializor\SerializableClosure;
+declare(strict_types=1);
+
 
 class ObjTyped
 {
