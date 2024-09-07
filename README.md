@@ -85,8 +85,6 @@ Serializor is order of magnitude faster than Opis/Closure. It is slightly slower
   
 - **Efficient and Secure**: Serializor uses a machine-specific secret to ensure that data serialized on one machine is deserialized correctly on the same machine, making the library secure and consistent across system reboots.
 
-- **Seamless Proxy Object Support**: For advanced use cases where objects returned from worker processes need to be represented in the main process, Serializor can return proxy instances that support `__get`, `__set`, and `__call`, allowing RPC-like interaction between processes.
-
 ## Installation
 
 ```bash
