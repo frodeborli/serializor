@@ -243,7 +243,7 @@ class ClosureTransformer implements TransformerInterface
         foreach ($tokens as $idx => $token) {
             if (!$capture) {
                 if ($token->line === $rf->getStartLine()) {
-                    if ($token->id === \T_STATIC && $tokens[$idx+2]?->id === \T_FUNCTION) {
+                    if ($token->id === \T_STATIC && $tokens[$idx + 2]?->id === \T_FUNCTION) {
                         $capture = true;
                         $isStaticFunction = true;
                     } elseif ($token->id === T_FUNCTION || $token->id === \T_FN) {
