@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+namespace Tests;
+
+use Closure;
+use ReflectionClass;
+use Serializor;
+use stdClass;
 
 class ObjTyped
 {
