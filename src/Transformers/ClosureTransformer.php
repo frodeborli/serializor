@@ -170,7 +170,7 @@ class ClosureTransformer implements TransformerInterface
         $hash = md5($code);
         if (!isset(self::$codeMakers[$hash])) {
             ClosureStream::register();
-            self::$codeMakers[$hash] = require(ClosureStream::STREAM_PROTO . '://' . $code);
+            self::$codeMakers[$hash] = require(ClosureStream::PROTOCOL . '://' . $code);
         }
 
         if ($this->resolveUseVariablesFunc !== null) {

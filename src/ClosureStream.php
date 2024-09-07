@@ -4,123 +4,94 @@ declare(strict_types=1);
 
 namespace Serializor;
 
+use function stream_wrapper_register;
+use function strlen;
+use function substr;
+
+use const PHP_EOL;
+
 /**
  * @internal
  */
-class ClosureStream
+final class ClosureStream
 {
-    const STREAM_PROTO = 'serializor';
+    public const PROTOCOL = 'serializor';
 
-    const STAT_BASE = [
-        0 => 51,
-        1 => 4405873,
-        2 => 33204,
-        3 => 1,
-        4 => 1011,
-        5 => 1011,
-        6 => 0,
-        7 => 2145,
-        8 => 1725454294,
-        9 => 1725454294,
-        10 => 1725454294,
-        11 => 4096,
-        12 => 8,
-        'dev' => 51,
-        'ino' => 4405873,
-        'mode' => 33204,
-        'nlink' => 1,
-        'uid' => 1011,
-        'gid' => 1011,
-        'rdev' => 0,
-        'size' => 2145,
-        'atime' => 1725454294,
-        'mtime' => 1725454294,
-        'ctime' => 1725454294,
-        'blksize' => 4096,
-        'blocks' => 8,
-    ];
+    /** @var ?resource $context */
+    public mixed $context = null;
 
-    protected static $isRegistered = false;
+    private static bool $isRegistered = false;
 
-    protected $content;
+    private string $content = '';
 
-    protected $length;
+    private int $length = 0;
 
-    protected $pointer = 0;
+    /** @var non-negative-int $pointer */
+    private int $pointer = 0;
 
-    public $context;
-
-    function stream_open($path, $mode, $options, &$opened_path)
+    public static function register(): void
     {
-        $this->content = "<?php\n" . substr($path, strlen(static::STREAM_PROTO . '://')) . ";";
-        $this->length = strlen($this->content);
-        return true;
+        if (!static::$isRegistered) {
+            static::$isRegistered = stream_wrapper_register(static::PROTOCOL, __CLASS__);
+        }
     }
 
-    public function stream_read($count)
-    {
-        $value = substr($this->content, $this->pointer, $count);
-        $this->pointer += $count;
-        return $value;
-    }
-
-    public function stream_eof()
+    public function stream_eof(): bool
     {
         return $this->pointer >= $this->length;
     }
 
-    public function stream_set_option($option, $arg1, $arg2)
+    public function stream_open(string $path, string $mode, int $options, ?string &$opened_path): bool
     {
-        return false;
-    }
-
-    public function stream_stat()
-    {
-        $stat = self::STAT_BASE;
-        $stat[7] = $stat['size'] = $this->length;
-        return $stat;
-    }
-
-    public function url_stat($path, $flags)
-    {
-        $stat = self::STAT_BASE;
-        $stat[7] = $stat['size'] = $this->length;
-        return $stat;
-    }
-
-    public function stream_seek($offset, $whence = SEEK_SET)
-    {
-        $crt = $this->pointer;
-
-        switch ($whence) {
-            case SEEK_SET:
-                $this->pointer = $offset;
-                break;
-            case SEEK_CUR:
-                $this->pointer += $offset;
-                break;
-            case SEEK_END:
-                $this->pointer = $this->length + $offset;
-                break;
-        }
-
-        if ($this->pointer < 0 || $this->pointer >= $this->length) {
-            $this->pointer = $crt;
-            return false;
-        }
+        $this->content = '<?php' . PHP_EOL . substr($path, strlen(static::PROTOCOL . '://')) . ';';
+        $this->length = strlen($this->content);
 
         return true;
     }
 
-    public function stream_tell()
+    /** @param non-negative-int $count */
+    public function stream_read(int $count): string
     {
-        return $this->pointer;
+        $value = substr($this->content, $this->pointer, $count);
+        $this->pointer += $count;
+
+        return $value;
     }
 
-    public static function register()
+    public function stream_set_option(int $option, int $arg1, int $arg2): bool
     {
-        if (!static::$isRegistered) {
-            static::$isRegistered = stream_wrapper_register(static::STREAM_PROTO, __CLASS__);
-        }
+        return false;
+    }
+
+    public function stream_stat(): array
+    {
+        return [
+            0 => 51,
+            1 => 4405873,
+            2 => 33204,
+            3 => 1,
+            4 => 1011,
+            5 => 1011,
+            6 => 0,
+            7 => $this->length,
+            8 => 1725454294,
+            9 => 1725454294,
+            10 => 1725454294,
+            11 => 4096,
+            12 => 8,
+            'dev' => 51,
+            'ino' => 4405873,
+            'mode' => 33204,
+            'nlink' => 1,
+            'uid' => 1011,
+            'gid' => 1011,
+            'rdev' => 0,
+            'size' => $this->length,
+            'atime' => 1725454294,
+            'mtime' => 1725454294,
+            'ctime' => 1725454294,
+            'blksize' => 4096,
+            'blocks' => 8,
+        ];
     }
 }
