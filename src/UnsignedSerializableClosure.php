@@ -86,7 +86,8 @@ class UnsignedSerializableClosure
      *
      * @return Codec
      */
-    public static function getSerializor(): Codec {
+    public static function getSerializor(): Codec
+    {
         if (self::$serializor === null) {
             self::$serializor = new Codec('');
         }

@@ -59,7 +59,8 @@ final class Stasis
         [$this->c, $this->i, $this->p, $this->v] = $data;
     }
 
-    public function whenResolved(Closure $listener): void {
+    public function whenResolved(Closure $listener): void
+    {
         $this->whenResolvedListeners[] = $listener;
     }
 
@@ -132,7 +133,7 @@ final class Stasis
             if ($className === $this->c) {
                 $prefix = '';
             } else {
-                $prefix = $className."\0";
+                $prefix = $className . "\0";
             }
             $self = &$this;
             \Closure::bind(function () use ($props, $properties, $prefix, &$deferred, $self) {
@@ -143,12 +144,12 @@ final class Stasis
                     if (!isset($properties[$name]) && !\array_key_exists($name, $properties)) {
                         continue;
                     }
-                    $name = $prefix.$rp->getName();
+                    $name = $prefix . $rp->getName();
                     if ($properties[$name] instanceof Stasis) {
                         if ($properties[$name]->hasInstance()) {
                             $rp->setValue($this, $properties[$name]->getInstance());
                         } else {
-                            $properties[$name]->whenResolved(function($instance) use ($rp, $properties, $name) {
+                            $properties[$name]->whenResolved(function ($instance) use ($rp, $properties, $name) {
                                 $rp->setValue($this, $instance);
                             });
                         }
@@ -224,12 +225,12 @@ final class Stasis
                     continue;
                 }
                 if ($rp->isInitialized($value)) {
-                    $result[$prefix.$rp->getName()] = $rp->getValue($value);
+                    $result[$prefix . $rp->getName()] = $rp->getValue($value);
                 }
             }
             $cro = $cro->getParentClass();
             if ($cro !== false) {
-                $prefix = $cro->getName()."\0";
+                $prefix = $cro->getName() . "\0";
             }
         } while ($cro !== false);
 
@@ -247,7 +248,7 @@ final class Stasis
                     if ($rp->isStatic()) {
                         continue;
                     }
-                    $name = $prefix.$rp->getName();
+                    $name = $prefix . $rp->getName();
                     if (isset($properties[$name]) || array_key_exists($name, $properties)) {
                         $rp->setValue($value, $properties[$name]);
                     }
@@ -256,7 +257,7 @@ final class Stasis
 
             $cro = $cro->getParentClass();
             if ($cro !== false) {
-                $prefix = $cro->getName()."\0";
+                $prefix = $cro->getName() . "\0";
             }
         } while ($cro !== false);
     }

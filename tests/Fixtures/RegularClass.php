@@ -27,8 +27,7 @@ class RegularClass
         public $a18 = null,
         public $a19 = null,
         public $a20 = null,
-    ) {
-    }
+    ) {}
 
     public static function staticMethod()
     {

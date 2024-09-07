@@ -1,4 +1,5 @@
 <?php
+
 namespace Serializor;
 
 use Closure;
@@ -6,22 +7,25 @@ use ReflectionClass;
 use ReflectionFunction;
 use ReflectionReference;
 
-class Debug {
+class Debug
+{
     private static array $longMemory = [];
     private static int $count = 0;
 
-    public static function clear(): void {
+    public static function clear(): void
+    {
         self::$longMemory = [];
         self::$count = 0;
     }
 
-    public static function dump(mixed &$value, int $indent = 0, string|int|null $key = null, array $stackMemory=[], array &$shortMemory=[]): void {
+    public static function dump(mixed &$value, int $indent = 0, string|int|null $key = null, array $stackMemory = [], array &$shortMemory = []): void
+    {
         try {
             $ind = \str_repeat('   ', $indent);
             if (\is_object($value)) {
                 $refId = 'object' . \spl_object_id($value);
             } else {
-                $refId = ReflectionReference::fromArrayElement([&$value], 0)->getId() . (\is_array($value)||\is_object($value) ? \spl_object_hash((object) $value) : '');
+                $refId = ReflectionReference::fromArrayElement([&$value], 0)->getId() . (\is_array($value) || \is_object($value) ? \spl_object_hash((object) $value) : '');
             }
             if (isset(self::$longMemory['@' . $refId])) {
                 $varId = self::$longMemory['@' . $refId];
@@ -60,7 +64,7 @@ class Debug {
                     echo "array[\n";
                 }
                 foreach ($value as $k => &$v) {
-                    self::dump($v, $indent+1, $k, $stackMemory, $shortMemory);
+                    self::dump($v, $indent + 1, $k, $stackMemory, $shortMemory);
                 }
                 echo $ind . "]\n";
             } elseif ($value instanceof Closure) {
@@ -129,13 +133,13 @@ class Debug {
             } else {
                 echo trim(var_export($value, true)) . " (" . \get_debug_type($value) . ")\n";
             }
-
         } finally {
         }
     }
 }
 
-class DebugBox {
+class DebugBox
+{
     public function __construct(
         public readonly mixed $value,
         public readonly string $refId

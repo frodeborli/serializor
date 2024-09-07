@@ -2,7 +2,8 @@
 
 use Serializor\SerializableClosure;
 
-class ObjTyped {
+class ObjTyped
+{
     public function __construct(
         public readonly Closure $closure,
         public readonly ?ObjTyped $objTyped
@@ -14,11 +15,13 @@ class ObjSelf
     public $o;
 }
 
-class ObjTypedUninit {
+class ObjTypedUninit
+{
     public Closure $value;
     public readonly Closure $c;
-    public function __construct() {
-        $this->c = function() {};
+    public function __construct()
+    {
+        $this->c = function () {};
     }
 }
 
@@ -297,7 +300,7 @@ test('closure bind to object', function () {
         return $this->aPublic();
     };
 
-    $b = $b->bindTo($a, __NAMESPACE__.'\\A');
+    $b = $b->bindTo($a, __NAMESPACE__ . '\\A');
 
     $u = s($b);
 
@@ -311,7 +314,7 @@ test('closure bind to object scope', function () {
         return $this->aProtected();
     };
 
-    $b = $b->bindTo($a, __NAMESPACE__.'\\A');
+    $b = $b->bindTo($a, __NAMESPACE__ . '\\A');
 
     $u = s($b);
 
@@ -324,7 +327,7 @@ test('closure bind to object static scope', function () {
         return static::aStaticProtected();
     };
 
-    $b = $b->bindTo(null, __NAMESPACE__.'\\A');
+    $b = $b->bindTo(null, __NAMESPACE__ . '\\A');
 
     $u = s($b);
 
@@ -363,27 +366,27 @@ test('rebound closure', function () {
     expect($r)->toEqual('Hi');
 });
 
-test('complex recursion', function() {
+test('complex recursion', function () {
 
     $b = null;
-    $a = [ &$b ];
-    $b = function() use ($a) {
+    $a = [&$b];
+    $b = function () use ($a) {
         return $a;
     };
     $a[] = &$a;
-    $nv = s(function() use (&$b, &$a) {
+    $nv = s(function () use (&$b, &$a) {
         $res = $b();
         expect($res[0])->toBe($a[0]);
     });
     $nv();
 });
 
-test('recursion maintained', function() {
+test('recursion maintained', function () {
 
     $v = 'Hello';
-    $a1 = [ &$v, &$v, $v, function&() use (&$a1) {
+    $a1 = [&$v, &$v, $v, function & () use (&$a1) {
         return $a1;
-    } ];
+    }];
     $a2 = s($a1[3])();
     expect($a2[0])->toBe($a2[1]);
     expect($a2[0] === $a2[2])->toBeTrue();
@@ -392,15 +395,17 @@ test('recursion maintained', function() {
     expect($a2[0] === $a2[2])->toBeFalse();
 });
 
-test('complex typed object', function() {
+test('complex typed object', function () {
     $o2 = null;
-    $o = new ObjTyped(function() use (&$o2) {}, null);
-    $o2 = new ObjTyped(function() use ($o) { return $o; }, $o);
+    $o = new ObjTyped(function () use (&$o2) {}, null);
+    $o2 = new ObjTyped(function () use ($o) {
+        return $o;
+    }, $o);
     $o3 = s($o2);
     expect(($o3->closure)())->toBe($o3->objTyped);
 });
 
-test('object with uninitialized property', function() {
+test('object with uninitialized property', function () {
     $o = new ObjTypedUninit();
     $o2 = s($o);
     $rc = new ReflectionClass($o);
