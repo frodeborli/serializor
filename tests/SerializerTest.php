@@ -14,10 +14,19 @@ class ObjSelf
     public $o;
 }
 
+class ObjTypedUninit {
+    public Closure $value;
+    public readonly Closure $c;
+    public function __construct() {
+        $this->c = function() {};
+    }
+}
+
 class ObjWithConst
 {
     const FOO = 'bar';
 }
+
 class A
 {
     protected static function aStaticProtected()
@@ -389,4 +398,12 @@ test('complex typed object', function() {
     $o2 = new ObjTyped(function() use ($o) { return $o; }, $o);
     $o3 = s($o2);
     expect(($o3->closure)())->toBe($o3->objTyped);
+});
+
+test('object with uninitialized property', function() {
+    $o = new ObjTypedUninit();
+    $o2 = s($o);
+    $rc = new ReflectionClass($o);
+    $rp = $rc->getProperty('value');
+    expect($rp->isInitialized($o2))->toBeFalse();
 });

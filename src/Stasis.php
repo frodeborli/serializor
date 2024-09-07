@@ -140,35 +140,17 @@ final class Stasis
                     if ($rp->isStatic()) {
                         continue;
                     }
+                    if (!isset($properties[$name]) && !\array_key_exists($name, $properties)) {
+                        continue;
+                    }
                     $name = $prefix.$rp->getName();
                     if ($properties[$name] instanceof Stasis) {
                         if ($properties[$name]->hasInstance()) {
                             $rp->setValue($this, $properties[$name]->getInstance());
                         } else {
                             $properties[$name]->whenResolved(function($instance) use ($rp, $properties, $name) {
-                                /*
-                                if ($properties[$name] === $instance) {
-                                    // Recursive reference so it is already fixed
-                                    return;
-                                }
-                                if (!$properties[$name]->hasValue()) {
-
-                                    return;
-                                }
-                                */
                                 $rp->setValue($this, $instance);
                             });
-                            /*
-                            echo "Deferring " . $rp->getName() . "\n";
-                            $deferred[] = function () use ($rp, $properties, $name): bool {
-                                if (!$properties[$name]->hasInstance()) {
-                                    return false;
-                                }
-                                $rp->setValue($this, $properties[$name]->getInstance());
-
-                                return true;
-                            };
-                            */
                         }
                     } else {
                         $rp->setValue($this, $properties[$name]);
@@ -215,7 +197,7 @@ final class Stasis
         } else {
             $rps = Reflect::getReflectionProperties($className);
             foreach ($rps as $name => $rp) {
-                if ($rp->isStatic()) {
+                if ($rp->isStatic() || !$rp->isInitialized($source)) {
                     continue;
                 }
                 $frozen->p[$name] = $rp->getValue($source);
