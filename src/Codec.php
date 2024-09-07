@@ -9,8 +9,6 @@ use Serializor\Box;
 use Serializor\SerializerError;
 use Serializor\Stasis;
 use Serializor\TransformerInterface;
-use Serializor\Transformers\AnonymousClassTransformer;
-use Serializor\Transformers\ClosureTransformer;
 use Throwable;
 use WeakMap;
 
@@ -152,7 +150,7 @@ class Codec
         if ($this->secret !== '') {
             $signature = \hash_hmac('sha256', $result, $this->secret, false);
 
-            return $signature.'|'.$result;
+            return $signature . '|' . $result;
         }
 
         return $result;
