@@ -1,8 +1,8 @@
 <?php
+
 namespace Serializor;
 
 use Closure;
-use Codec;
 
 /**
  * Implementation of UnsignedSerializableClosure to be compatible with
