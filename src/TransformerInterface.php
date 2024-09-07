@@ -1,8 +1,8 @@
 <?php
 
-namespace Serializor;
+declare(strict_types=1);
 
-use Closure;
+namespace Serializor;
 
 /**
  * Interface for classes that provide customized serialization for

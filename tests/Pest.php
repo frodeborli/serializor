@@ -1,5 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
+namespace Tests;
+
+use Serializor;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -42,6 +48,7 @@ expect()->extend('toBeCode', function ($expected) {
  * @param T $v The value to be serialized and unserialized
  * @return T The unserialized value, preserving the original type
  */
-function s(mixed $v): mixed {
+function s(mixed $v): mixed
+{
     return Serializor::unserialize(Serializor::serialize($v));
 }

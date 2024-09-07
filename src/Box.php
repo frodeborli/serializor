@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Serializor;
 
 /**
@@ -14,9 +16,9 @@ final class Box
     public mixed $val;
     public array $shortcuts;
 
-    public function __construct(array $val, array $shortcuts=[]) {
+    public function __construct(array $val, array $shortcuts = [])
+    {
         $this->val = &$val[0];
         $this->shortcuts = $shortcuts;
     }
-
 }

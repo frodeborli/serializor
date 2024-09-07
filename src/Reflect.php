@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Serializor;
 
 use Closure;
@@ -16,21 +19,24 @@ use WeakMap;
  *
  * @package Serializor
  */
-final class Reflect {
+final class Reflect
+{
 
     private static bool $initialized = false;
     private static array $reflectionClassCache = [];
     private static WeakMap $reflectionObjectCache;
     private static WeakMap $reflectionFunctionCache;
 
-    public static function getVariableId(mixed &$value): string {
+    public static function getVariableId(mixed &$value): string
+    {
         return ReflectionReference::fromArrayElement([&$value], 0)->getId();
     }
 
     /**
      * Provide a hash unique for the Reflection instance.
      */
-    public static function getHash(Reflector $reflector): string {
+    public static function getHash(Reflector $reflector): string
+    {
         return \md5((string) $reflector);
     }
 
@@ -40,7 +46,8 @@ final class Reflect {
      * @param callable $function
      * @return ReflectionFunction
      */
-    public static function getReflectionFunction(callable $function): ReflectionFunction {
+    public static function getReflectionFunction(callable $function): ReflectionFunction
+    {
         if (!self::$initialized) self::init();
         if (!isset(self::$reflectionFunctionCache[$function])) {
             self::$reflectionFunctionCache[$function] = new ReflectionFunction(Closure::fromCallable($function));
@@ -48,7 +55,8 @@ final class Reflect {
         return self::$reflectionFunctionCache[$function];
     }
 
-    private static function getReflectionObject(object $value): ReflectionObject {
+    private static function getReflectionObject(object $value): ReflectionObject
+    {
         if (!self::$initialized) self::init();
         if (!isset(self::$reflectionObjectCache[$value])) {
             self::$reflectionObjectCache[$value] = new ReflectionObject($value);
@@ -56,7 +64,8 @@ final class Reflect {
         return self::$reflectionObjectCache[$value];
     }
 
-    public static function getReflectionClass(object|string $value): ReflectionClass {
+    public static function getReflectionClass(object|string $value): ReflectionClass
+    {
         if (\is_object($value)) {
             return self::getReflectionObject($value);
         }
@@ -105,12 +114,12 @@ final class Reflect {
     /**
      * Instantiate static properties
      */
-    private static function init(): void {
+    private static function init(): void
+    {
         if (!self::$initialized) {
             self::$initialized = true;
             self::$reflectionObjectCache = new WeakMap;
             self::$reflectionFunctionCache = new WeakMap;
         }
     }
-
 }

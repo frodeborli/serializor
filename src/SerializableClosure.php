@@ -1,8 +1,10 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Serializor;
 
 use Closure;
-use Codec;
 
 /**
  * Implementation of SerializableClosure to be compatible with
@@ -10,11 +12,13 @@ use Codec;
  *
  * @package Serializor
  */
-class SerializableClosure {
+class SerializableClosure
+{
 
     private Closure $closure;
 
-    public function __construct(Closure $closure) {
+    public function __construct(Closure $closure)
+    {
         $this->closure = $closure;
     }
 
@@ -23,7 +27,8 @@ class SerializableClosure {
      *
      * @return mixed
      */
-    public function __invoke() {
+    public function __invoke()
+    {
         return call_user_func_array($this->closure, func_get_args());
     }
 
@@ -32,7 +37,8 @@ class SerializableClosure {
      *
      * @return Closure
      */
-    public function getClosure(): Closure {
+    public function getClosure(): Closure
+    {
         return $this->closure;
     }
 
@@ -68,11 +74,13 @@ class SerializableClosure {
         $this->closure = Codec::getInstance()->_unserialize($data['_']);
     }
 
-    public static function resolveUseVariablesUsing(callable $resolver): void {
+    public static function resolveUseVariablesUsing(callable $resolver): void
+    {
         Codec::setResolveUseVarsFunc($resolver instanceof Closure ? $resolver : Closure::fromCallable($resolver));
     }
 
-    public static function transformUseVariablesUsing(callable $transformer): void {
+    public static function transformUseVariablesUsing(callable $transformer): void
+    {
         Codec::setTransformUseVarsFunc($transformer instanceof Closure ? $transformer : Closure::fromCallable($transformer));
     }
 
@@ -82,7 +90,8 @@ class SerializableClosure {
      * @param  string|null  $secret
      * @return void
      */
-    public static function setSecretKey($secret): void {
+    public static function setSecretKey($secret): void
+    {
         self::$secret = $secret;
 
         Codec::setDefaultSecret($secret);

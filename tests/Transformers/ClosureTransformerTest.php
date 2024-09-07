@@ -6,6 +6,8 @@ namespace Tests\Transformers;
 
 use Tests\Fixtures\Closure;
 
+use function Tests\s;
+
 test('`\Closure` returning a class instance called `Closure`', function (): void {
     $expected = static fn(): Closure => new Closure();
 

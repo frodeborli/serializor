@@ -1,8 +1,10 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Serializor;
 
 use Closure;
-use Codec;
 
 /**
  * Implementation of UnsignedSerializableClosure to be compatible with
@@ -86,7 +88,8 @@ class UnsignedSerializableClosure
      *
      * @return Codec
      */
-    public static function getSerializor(): Codec {
+    public static function getSerializor(): Codec
+    {
         if (self::$serializor === null) {
             self::$serializor = new Codec('');
         }
