@@ -3,15 +3,12 @@
 namespace Serializor\Transformers;
 
 use Closure;
-use LogicException;
 use PhpToken;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionMethod;
 use RuntimeException;
-use Codec;
 use Serializor\ClosureStream;
-use Serializor\Debug;
 use Serializor\Reflect;
 use Serializor\SerializerError;
 use Serializor\Stasis;
@@ -145,22 +142,6 @@ class ClosureTransformer implements TransformerInterface
             return self::$transformedObjects[$value];
         }
 
-
-        /*
-        $q = [ $value ];
-        while (!empty($q)) {
-            $i = array_shift($q);
-            if ($i instanceof Stasis) {
-                Debug::dump($i);
-                throw new LogicException("Value " . $i->getClassName() . " has Stasis in a member");
-            } elseif (\is_array($i)) {
-                $q = [...$q, ...$i];
-            } elseif (\is_object($i)) {
-                $q = [...$q, ...\get_object_vars($i)];
-            }
-        }
-        */
-
         if (\is_callable($value->p['callable'])) {
             $result = Closure::fromCallable($value->p['callable']);
             self::$transformedObjects[$value] = $result;
@@ -177,7 +158,7 @@ class ClosureTransformer implements TransformerInterface
 
         $code = <<<PHP
             namespace {$value->p['namespace']} {
-                return static function(array &\$useVars, ?object \$thisObject, ?string \$scopeClass): Closure {
+                return static function(array &\$useVars, ?object \$thisObject, ?string \$scopeClass): \Closure {
                     extract(\$useVars, \EXTR_OVERWRITE | \EXTR_REFS);
                     return \Closure::bind({$value->p['code']}, \$thisObject, \$scopeClass);
                 };
