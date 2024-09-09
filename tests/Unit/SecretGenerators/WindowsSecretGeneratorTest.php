@@ -7,18 +7,23 @@ namespace Tests\Unit\SecretGenerators;
 use Serializor\SecretGenerators\SecretGenerationException;
 use Serializor\SecretGenerators\WindowsSecretGenerator;
 
+use const PHP_OS_FAMILY;
+
 test('generates a secret hash on windows machines', function (): void {
     $secretGenerator = new WindowsSecretGenerator();
 
     $actual = $secretGenerator->generate();
 
     expect($actual)->not()->toBeNull();
-})->coversClass(WindowsSecretGenerator::class)->onlyOnWindows();
+})
+    ->coversClass(WindowsSecretGenerator::class)
+    ->skip(fn(): bool => PHP_OS_FAMILY !== 'Windows', 'This test is skipped on [' . PHP_OS_FAMILY . '].');
 
 test('throws an exception if secret hash could not be generated', function (): void {
     $secretGenerator = new WindowsSecretGenerator();
 
     $secretGenerator->generate();
 })
-    ->throws(SecretGenerationException::class)->skipOnWindows()
-    ->coversClass(WindowsSecretGenerator::class)->onlyOnWindows();
+    ->throws(SecretGenerationException::class)
+    ->coversClass(WindowsSecretGenerator::class)
+    ->skip(fn(): bool => PHP_OS_FAMILY === 'Windows', 'This test is skipped on [Windows].');

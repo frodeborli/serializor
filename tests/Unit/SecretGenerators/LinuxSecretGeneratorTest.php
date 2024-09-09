@@ -13,12 +13,15 @@ test('generates a secret hash on linux machines', function (): void {
     $actual = $secretGenerator->generate();
 
     expect($actual)->not()->toBeNull();
-})->coversClass(LinuxSecretGenerator::class)->onlyOnLinux();
+})
+    ->coversClass(LinuxSecretGenerator::class)
+    ->skip(fn(): bool => PHP_OS_FAMILY !== 'Linux', 'This test is skipped on [' . PHP_OS_FAMILY . '].');
 
 test('throws an exception if secret hash could not be generated', function (): void {
     $secretGenerator = new LinuxSecretGenerator();
 
     $secretGenerator->generate();
 })
-    ->throws(SecretGenerationException::class)->skipOnLinux()
-    ->coversClass(LinuxSecretGenerator::class)->onlyOnLinux();
+    ->throws(SecretGenerationException::class)
+    ->coversClass(LinuxSecretGenerator::class)
+    ->skip(fn(): bool => PHP_OS_FAMILY === 'Linux', 'This test is skipped on [Linux].');
