@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Serializor\Codec;
+use Serializor\SecretGenerators\FallbackSecretGenerator;
 use Serializor\SecretGenerators\LinuxSecretGenerator;
 use Serializor\SecretGenerators\MacSecretGenerator;
 use Serializor\SecretGenerators\SecretGenerationException;
@@ -146,18 +147,23 @@ class Serializor
      * This secret is intended to be unique to the machine and persistent across reboots.
      *
      * @return string A machine-specific secret key
-     * @throws SerializerError           If no suitable secret generator could be located
      * @throws SecretGenerationException If no suitable secret could be generated
      */
     public static function getMachineSecret(): string
     {
-        $secretGenerator = match (PHP_OS_FAMILY) {
-            'Windows' => new WindowsSecretGenerator(),
-            'Darwin' => new MacSecretGenerator(),
-            'Linux' => new LinuxSecretGenerator(),
-            default => throw new SerializerError('Could not locate suitable secret generator for ' . PHP_OS_FAMILY . 'operating system')
-        };
-
-        return $secretGenerator->generate();
+        try {
+            return (match (PHP_OS_FAMILY) {
+                'Windows' => new WindowsSecretGenerator(),
+                'Darwin' => new MacSecretGenerator(),
+                'Linux' => new LinuxSecretGenerator(),
+                default => throw new SerializerError(
+                    'Could not locate suitable secret generator for ' . PHP_OS_FAMILY . ' operating system'
+                )
+            })->generate();
+        } catch (SecretGenerationException | SerializerError) {
+            return (new FallbackSecretGenerator(
+                sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'machine-secret'
+            ))->generate();
+        }
     }
 }
