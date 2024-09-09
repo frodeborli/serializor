@@ -11,8 +11,6 @@ use Serializor\SerializerError;
 use Serializor\Transformers\AnonymousClassTransformer;
 use Serializor\Transformers\ClosureTransformer;
 
-use const PHP_OS_FAMILY;
-
 /**
  * Serializor class responsible for serializing and deserializing data,
  * particularly closures and anonymous classes. This class allows for the
