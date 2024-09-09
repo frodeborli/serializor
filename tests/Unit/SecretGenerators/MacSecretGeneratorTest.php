@@ -19,4 +19,6 @@ test('throws an exception if secret hash could not be generated', function (): v
     $secretGenerator = new MacSecretGenerator();
 
     $secretGenerator->generate();
-})->throws(SecretGenerationException::class)->skipOnMac();
+})
+    ->throws(SecretGenerationException::class)->skipOnMac()
+    ->coversClass(MacSecretGenerator::class)->onlyOnMac();

@@ -19,4 +19,6 @@ test('throws an exception if secret hash could not be generated', function (): v
     $secretGenerator = new WindowsSecretGenerator();
 
     $secretGenerator->generate();
-})->throws(SecretGenerationException::class)->skipOnWindows();
+})
+    ->throws(SecretGenerationException::class)->skipOnWindows()
+    ->coversClass(WindowsSecretGenerator::class)->onlyOnWindows();

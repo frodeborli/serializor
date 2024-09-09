@@ -19,4 +19,6 @@ test('throws an exception if secret hash could not be generated', function (): v
     $secretGenerator = new LinuxSecretGenerator();
 
     $secretGenerator->generate();
-})->throws(SecretGenerationException::class)->skipOnLinux();
+})
+    ->throws(SecretGenerationException::class)->skipOnLinux()
+    ->coversClass(LinuxSecretGenerator::class)->onlyOnLinux();
