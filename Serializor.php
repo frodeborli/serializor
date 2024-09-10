@@ -3,14 +3,8 @@
 declare(strict_types=1);
 
 use Serializor\Codec;
-use Serializor\SecretGenerators\BsdSecretGenerator;
-use Serializor\SecretGenerators\FallbackSecretGenerator;
-use Serializor\SecretGenerators\LinuxSecretGenerator;
-use Serializor\SecretGenerators\MacSecretGenerator;
 use Serializor\SecretGenerators\SecretGenerationException;
-use Serializor\SecretGenerators\SolarisSecretGenerator;
-use Serializor\SecretGenerators\WindowsSecretGenerator;
-use Serializor\SerializerError;
+use Serializor\SecretGenerators\SecretGeneratorFactory;
 use Serializor\Transformers\AnonymousClassTransformer;
 use Serializor\Transformers\ClosureTransformer;
 
@@ -153,21 +147,11 @@ class Serializor
      */
     public static function getMachineSecret(): string
     {
+        $factory = new SecretGeneratorFactory(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'machine-secret');
         try {
-            return (match (PHP_OS_FAMILY) {
-                'Windows' => new WindowsSecretGenerator(),
-                'Darwin' => new MacSecretGenerator(),
-                'Linux' => new LinuxSecretGenerator(),
-                'Solaris' => new SolarisSecretGenerator(),
-                'BSD' => new BsdSecretGenerator(),
-                default => throw new SerializerError(
-                    'Could not locate suitable secret generator for ' . PHP_OS_FAMILY . ' operating system'
-                )
-            })->generate();
-        } catch (SecretGenerationException | SerializerError) {
-            return (new FallbackSecretGenerator(
-                sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'machine-secret'
-            ))->generate();
+            return $factory->create(PHP_OS_FAMILY)->generate();
+        } catch (SecretGenerationException) {
+            return $factory->create('fallback')->generate();
         }
     }
 }
