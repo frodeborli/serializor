@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Transformers;
+namespace Tests\Unit\Transformers;
 
 use Serializor\Transformers\ClosureTransformer;
 use Tests\Fixtures\Closure;
