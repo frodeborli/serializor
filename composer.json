@@ -9,7 +9,7 @@
     ],
     "type": "library",
     "require-dev": {
-        "pestphp/pest": "^1.18"
+        "pestphp/pest": "^3.0"
     },
     "license": "MIT",
     "autoload": {
