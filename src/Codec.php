@@ -6,9 +6,9 @@ namespace Serializor;
 
 use LogicException;
 use ReflectionReference;
-use Serializor;
 use Serializor\Box;
 use Serializor\SerializerError;
+use Serializor\Serializor;
 use Serializor\Stasis;
 use Serializor\TransformerInterface;
 use Throwable;

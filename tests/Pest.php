@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use Serializor;
 use Serializor\Codec;
+use Serializor\Serializor;
 
 use function get_debug_type;
 use function sprintf;

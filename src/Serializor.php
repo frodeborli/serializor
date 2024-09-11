@@ -2,11 +2,19 @@
 
 declare(strict_types=1);
 
+namespace Serializor;
+
+use Closure;
 use Serializor\Codec;
 use Serializor\SecretGenerators\SecretGenerationException;
 use Serializor\SecretGenerators\SecretGeneratorFactory;
 use Serializor\Transformers\AnonymousClassTransformer;
 use Serializor\Transformers\ClosureTransformer;
+
+use function sys_get_temp_dir;
+
+use const DIRECTORY_SEPARATOR;
+use const PHP_OS_FAMILY;
 
 /**
  * Serializor class responsible for serializing and deserializing data,

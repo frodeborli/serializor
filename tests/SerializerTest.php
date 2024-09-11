@@ -6,7 +6,7 @@ namespace Tests;
 
 use Closure;
 use ReflectionClass;
-use Serializor;
+use Serializor\Serializor;
 use stdClass;
 
 class ObjTyped
