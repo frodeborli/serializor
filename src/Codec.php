@@ -19,7 +19,7 @@ use WeakMap;
  * customizing the serialization and unserialization process via
  * implementations of the TransformerInterface.
  */
-class Codec
+final class Codec
 {
 
     /**
@@ -162,7 +162,7 @@ class Codec
      * Encodes an object structure into a corresponding object structure where
      * values that can't be serialized are converted to Stasis objects.
      */
-    protected function &transform(mixed &$source, array $path, string|int|null $key): mixed
+    private function &transform(mixed &$source, array $path, string|int|null $key): mixed
     {
         if ($source === null || \is_scalar($source)) {
             throw new SerializerError('Trying to encode NULL or scalar');

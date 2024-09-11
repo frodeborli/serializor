@@ -22,7 +22,7 @@ use const PHP_OS_FAMILY;
  * serialization of tasks across processes, using a machine-specific secret
  * to enhance security and consistency in serialization.
  */
-class Serializor
+final class Serializor
 {
     /**
      * Singleton instance for the default Serializor codec.

@@ -13,6 +13,9 @@ use ReflectionReference;
 use Reflector;
 use WeakMap;
 
+use function hash;
+use function is_object;
+
 /**
  * Provides Reflection objects for various use cases and caches the reflection
  * instances to avoid excessive garbage collection.
@@ -37,7 +40,7 @@ final class Reflect
      */
     public static function getHash(Reflector $reflector): string
     {
-        return \md5((string) $reflector);
+        return hash('sha256', (string) $reflector);
     }
 
     /**
@@ -66,7 +69,7 @@ final class Reflect
 
     public static function getReflectionClass(object|string $value): ReflectionClass
     {
-        if (\is_object($value)) {
+        if (is_object($value)) {
             return self::getReflectionObject($value);
         }
         if (!isset(self::$reflectionClassCache[$value])) {

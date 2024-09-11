@@ -11,6 +11,8 @@ use stdClass;
 
 use function Tests\s;
 
+covers(Serializor::class);
+
 class ObjTyped
 {
     public function __construct(
@@ -120,7 +122,7 @@ test('non-static closure with simple const', function () {
     $u = Serializor::unserialize(Serializor::serialize($c))();
 
     expect($u)->toBe('bar');
-})->coversClass(Serializor::class);
+});
 
 test('static closure with simple const', function () {
     $c = static function () {
@@ -130,7 +132,7 @@ test('static closure with simple const', function () {
     $u = Serializor::unserialize(Serializor::serialize($c))();
 
     expect($u)->toBe('bar');
-})->coversClass(Serializor::class);
+});
 
 test('closure use return value', function () {
     $a = 100;
@@ -141,7 +143,7 @@ test('closure use return value', function () {
     $u = s($c);
 
     expect($a)->toEqual($u());
-})->coversClass(Serializor::class);
+});
 
 test('closure use return closure', function () {
     $a = function ($p) {
@@ -155,7 +157,7 @@ test('closure use return closure', function () {
     $u = s($b);
 
     expect($u(1))->toEqual($v + 1);
-})->coversClass(Serializor::class);
+});
 
 test('closure use return closure by ref', function () {
     $a = function ($p) {
@@ -169,7 +171,7 @@ test('closure use return closure by ref', function () {
     $u = s($b);
 
     expect($u(1))->toEqual($v + 1);
-})->coversClass(Serializor::class);
+});
 
 test('closure use self', function () {
     $a = function () use (&$a) {
@@ -178,7 +180,7 @@ test('closure use self', function () {
     $u = s($a);
 
     expect($u())->toEqual($u);
-})->coversClass(Serializor::class);
+});
 
 test('closure use self in array', function () {
     $a = [];
@@ -192,7 +194,7 @@ test('closure use self in array', function () {
     $u = s($b);
 
     expect($u())->toEqual($u);
-})->coversClass(Serializor::class);
+});
 
 test('closure use self in object', function () {
     $a = new stdClass();
@@ -206,7 +208,7 @@ test('closure use self in object', function () {
     $u = s($b);
 
     expect($u())->toEqual($u);
-})->coversClass(Serializor::class);
+});
 
 test('closure use self in multi array', function () {
     $a = [];
@@ -229,7 +231,7 @@ test('closure use self in multi array', function () {
     $u = s($c);
 
     expect($u(0))->toEqual($u);
-})->coversClass(Serializor::class);
+});
 
 test('closure use self in instance', function () {
     $i = new ObjSelf();
@@ -239,7 +241,7 @@ test('closure use self in instance', function () {
     $i->o = $c;
     $u = s($c);
     expect($u($u))->toBeTrue();
-})->coversClass(Serializor::class);
+});
 
 test('closure use self in instance2', function () {
     $i = new ObjSelf();
@@ -263,7 +265,7 @@ test('closure serialization twice', function () {
     $u = s(s($b));
 
     expect($u('ok'))->toEqual('ok');
-})->coversClass(Serializor::class);
+});
 
 test('closure real serialization', function () {
     $f = function ($a, $b) {
@@ -272,7 +274,7 @@ test('closure real serialization', function () {
 
     $u = s(s($f));
     expect($u(2, 3))->toEqual(5);
-})->coversClass(Serializor::class);
+});
 
 test('closure nested', function () {
     $o = function ($a) {
@@ -294,7 +296,7 @@ test('closure nested', function () {
     $os = s($o);
 
     expect($os(true))->toEqual(true);
-})->coversClass(Serializor::class);
+});
 
 test('closure curly syntax', function () {
     $f = function () {
@@ -305,7 +307,7 @@ test('closure curly syntax', function () {
     };
     $f = s($f);
     expect($f())->toEqual(4);
-})->coversClass(Serializor::class);
+});
 
 test('closure bind to object', function () {
     $a = new A();
@@ -319,7 +321,7 @@ test('closure bind to object', function () {
     $u = s($b);
 
     expect($u())->toEqual('public called');
-})->coversClass(Serializor::class);
+});
 
 test('closure bind to object scope', function () {
     $a = new A();
@@ -333,7 +335,7 @@ test('closure bind to object scope', function () {
     $u = s($b);
 
     expect($u())->toEqual('protected called');
-})->coversClass(Serializor::class);
+});
 
 test('closure bind to object static scope', function () {
     $a = new A();
@@ -347,7 +349,7 @@ test('closure bind to object static scope', function () {
     $u = s($b);
 
     expect($u())->toEqual('static protected called');
-})->coversClass(Serializor::class);
+});
 
 test('mixed encodings', function () {
     $a = iconv('utf-8', 'utf-16', 'Düsseldorf');
@@ -362,7 +364,7 @@ test('mixed encodings', function () {
 
     expect($r[0])->toEqual($a);
     expect($r[1])->toEqual($b);
-})->coversClass(Serializor::class);
+});
 
 test('rebound closure', function () {
     $closure = Closure::bind(
@@ -379,7 +381,7 @@ test('rebound closure', function () {
     $r = $u();
 
     expect($r)->toEqual('Hi');
-})->coversClass(Serializor::class);
+});
 
 test('complex recursion', function () {
 
@@ -394,7 +396,7 @@ test('complex recursion', function () {
         expect($res[0])->toBe($a[0]);
     });
     $nv();
-})->coversClass(Serializor::class);
+});
 
 test('recursion maintained', function () {
 
@@ -408,7 +410,7 @@ test('recursion maintained', function () {
     $a2[0] = 'World';
     expect($a2[0])->toBe($a2[1]);
     expect($a2[0] === $a2[2])->toBeFalse();
-})->coversClass(Serializor::class);
+});
 
 test('complex typed object', function () {
     $o2 = null;
@@ -418,7 +420,7 @@ test('complex typed object', function () {
     }, $o);
     $o3 = s($o2);
     expect(($o3->closure)())->toBe($o3->objTyped);
-})->coversClass(Serializor::class);
+});
 
 test('object with uninitialized property', function () {
     $o = new ObjTypedUninit();
@@ -426,4 +428,4 @@ test('object with uninitialized property', function () {
     $rc = new ReflectionClass($o);
     $rp = $rc->getProperty('value');
     expect($rp->isInitialized($o2))->toBeFalse();
-})->coversClass(Serializor::class);
+});

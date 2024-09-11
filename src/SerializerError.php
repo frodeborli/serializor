@@ -11,4 +11,4 @@ use RuntimeException;
  * 
  * @package Serializor
  */
-class SerializerError extends RuntimeException {}
+final class SerializerError extends RuntimeException {}

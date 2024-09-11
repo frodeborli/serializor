@@ -6,16 +6,19 @@ namespace Serializor\Transformers;
 
 use PhpToken;
 use ReflectionObject;
+use Serializor\ClosureStream;
 use Serializor\SerializerError;
 use Serializor\Stasis;
 use Serializor\TransformerInterface;
+
+use function hash;
 
 /**
  * Provides serialization of anonymous classes for Serializor.
  *
  * @package Serializor
  */
-class AnonymousClassTransformer implements TransformerInterface
+final class AnonymousClassTransformer implements TransformerInterface
 {
     private const STARTING = 0;
     private const CONSTRUCTOR_ARGS = 1;
@@ -70,7 +73,8 @@ class AnonymousClassTransformer implements TransformerInterface
             $code = 'return static function() {
                 return new ' . $value->p['|code'] . ';
             };';
-            self::$classMakerCache[$hash] = eval($code);
+            ClosureStream::register();
+            self::$classMakerCache[$hash] = require(ClosureStream::PROTOCOL . '://' . $code);
         }
 
         $instance = self::$classMakerCache[$hash]();
@@ -249,6 +253,6 @@ class AnonymousClassTransformer implements TransformerInterface
             . ($ro->getName())
             . ($ro->getShortName())
             . ($pco ? $pco->getName() : '');
-        return md5($hash);
+        return hash('sha256', $hash);
     }
 }

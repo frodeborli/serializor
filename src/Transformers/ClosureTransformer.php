@@ -17,12 +17,14 @@ use Serializor\Stasis;
 use Serializor\TransformerInterface;
 use WeakMap;
 
+use function hash;
+
 /**
  * Provides serialization of Closures for Serializor.
  *
  * @package Serializor
  */
-class ClosureTransformer implements TransformerInterface
+final class ClosureTransformer implements TransformerInterface
 {
     private static array $codeMakers = [];
     private static array $tokenCache = [];
@@ -167,7 +169,7 @@ class ClosureTransformer implements TransformerInterface
             }
             PHP;
 
-        $hash = md5($code);
+        $hash = hash('sha256', $code);
         if (!isset(self::$codeMakers[$hash])) {
             ClosureStream::register();
             self::$codeMakers[$hash] = require(ClosureStream::PROTOCOL . '://' . $code);
