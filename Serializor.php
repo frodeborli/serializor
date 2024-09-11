@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 use Serializor\Codec;
-use Serializor\SerializerError;
+use Serializor\SecretGenerators\SecretGenerationException;
+use Serializor\SecretGenerators\SecretGeneratorFactory;
 use Serializor\Transformers\AnonymousClassTransformer;
 use Serializor\Transformers\ClosureTransformer;
 
@@ -33,35 +36,6 @@ class Serializor
 
     /** @var Closure|null Custom function for resolving variables used in closures */
     private static ?Closure $resolveUseVarsFunc = null;
-
-    /**
-     * List of files used to generate a machine-specific secret key.
-     * The library attempts to generate a secret based on these files,
-     * making it possible to serialize and unserialize data on the same
-     * machine, while adding protection from deserialization on different
-     * machines.
-     */
-    public const AUTOSECRET_FILES = [
-        'primary' => [
-            '/var/lib/dbus',
-            '/etc/machine-id',
-            '/proc/sys/kernel/random/boot_id',
-            '/sys/class/dmi/id/product_uuid',
-            '/etc/hostconfig',
-            '/etc/hostid',
-            '/etc/rc.conf',
-            '/var/db/hostid',
-            'C:\ProgramData\Microsoft\Windows\DeviceMetadataCache\dmrc.idx',
-            'C:\Windows\System32\spp\store\2.0\tokens.dat',
-            'C:\Windows\System32\drivers\etc\hosts',
-            '/etc/hosts',
-        ],
-        'secondary' => [
-            '/proc/cpuinfo',
-            'C:\Windows\System32\license.rtf',
-            '/Library/Preferences/com.apple.TimeMachine.plist',
-        ],
-    ];
 
     /**
      * Serializes the given value using the default Serializor instance.
@@ -165,60 +139,19 @@ class Serializor
     }
 
     /**
-     * Automatically identifies a machine-specific secret string by examining
-     * a combination of system files. This secret is intended to be unique to the
-     * machine and persistent across reboots.
+     * Automatically identifies a machine-specific secret string.
+     * This secret is intended to be unique to the machine and persistent across reboots.
      *
      * @return string A machine-specific secret key
-     * @throws SerializerError If no suitable secret could be generated
+     * @throws SecretGenerationException If no suitable secret could be generated
      */
     public static function getMachineSecret(): string
     {
-        $primary = null;
-        $secondary = null;
-
-        foreach (self::AUTOSECRET_FILES['primary'] as $candidate) {
-            if ($primary = self::getSecretFromPath($candidate)) {
-                break;
-            }
-        }
-
-        foreach (self::AUTOSECRET_FILES['secondary'] as $candidate) {
-            if ($secondary = self::getSecretFromPath($candidate)) {
-                break;
-            }
-        }
-
-        if ($primary !== null && $secondary !== null) {
-            return md5(serialize([$primary, $secondary]));
-        }
-
-        throw new SerializerError('Unable to obtain a machine-specific secret');
-    }
-
-    /**
-     * Generates a secret string based on the metadata and contents of the given file.
-     *
-     * @param string $path The file path to use for generating the secret
-     *
-     * @return string|null The generated secret string, or null if the file is not readable
-     */
-    private static function getSecretFromPath(string $path): ?string
-    {
-        if (!is_file($path) || !\is_readable($path)) {
-            return null;
-        }
-
+        $factory = new SecretGeneratorFactory(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'machine-secret');
         try {
-            $fp = fopen($path, 'rb');
-            $data = fread($fp, 65536); // Read up to 64KB of file content
-            $stat = fstat($fp); // Get file metadata
-            $data .= serialize($stat); // Append serialized file metadata
-            fclose($fp);
-
-            return $data;
-        } catch (Throwable) {
-            return null;
+            return $factory->create(PHP_OS_FAMILY)->generate();
+        } catch (SecretGenerationException) {
+            return $factory->create('fallback')->generate();
         }
     }
 }
