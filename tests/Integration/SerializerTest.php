@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Tests;
+namespace Tests\Integration;
 
 use Closure;
 use ReflectionClass;
 use Serializor\Serializor;
 use stdClass;
+
+use function Tests\s;
 
 class ObjTyped
 {
@@ -283,7 +285,8 @@ test('closure nested', function () {
             return ! $b;
         };
 
-        $ns = s($n);
+        // FIXME: This function call should not be fully namespaced
+        $ns = \Tests\s($n);
 
         return $ns(false);
     };

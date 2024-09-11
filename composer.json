@@ -15,10 +15,7 @@
     "autoload": {
         "psr-4": {
             "Serializor\\": "src/"
-        },
-        "files": [
-            "Serializor.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
