@@ -35,8 +35,6 @@ test('throws an exception if secret hash could not be generated', function (): v
     set_error_handler(fn(): bool => true, E_WARNING);
 
     $secretGenerator->generate();
-
-    restore_error_handler();
 })
     ->throws(SecretGenerationException::class)
     ->after(fn() => restore_error_handler());
