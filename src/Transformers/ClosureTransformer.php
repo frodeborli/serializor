@@ -26,22 +26,20 @@ use function hash;
  */
 final class ClosureTransformer implements TransformerInterface
 {
+    /** @var array<string, Closure(array, ?object, ?string):Closure> $codeMakers */
     private static array $codeMakers = [];
     private static array $tokenCache = [];
     private static array $functionCache = [];
     /**
      * @var null|WeakMap<Closure|Stasis,Closure|Stasis>
      */
-    private static ?WeakMap $transformedObjects = null;
-    private ?array $tmp = null;
+    private static WeakMap $transformedObjects;
     private ?Closure $transformUseVariablesFunc;
     private ?Closure $resolveUseVariablesFunc;
 
     public function __construct(?Closure $transformUseVariablesFunc = null, ?Closure $resolveUseVariablesFunc = null)
     {
-        if (self::$transformedObjects === null) {
-            self::$transformedObjects = new WeakMap();
-        }
+        self::$transformedObjects ??= new WeakMap();
         $this->transformUseVariablesFunc = $transformUseVariablesFunc;
         $this->resolveUseVariablesFunc = $resolveUseVariablesFunc;
     }
@@ -172,6 +170,7 @@ final class ClosureTransformer implements TransformerInterface
         $hash = hash('sha256', $code);
         if (!isset(self::$codeMakers[$hash])) {
             ClosureStream::register();
+            /** @var Closure(array, ?object, ?string):Closure */
             self::$codeMakers[$hash] = require(ClosureStream::PROTOCOL . '://' . $code);
         }
 
