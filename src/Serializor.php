@@ -6,6 +6,7 @@ namespace Serializor;
 
 use Closure;
 use Serializor\Codec;
+use Serializor\CodeExtractors\AnonymousClassCodeExtractor;
 use Serializor\SecretGenerators\SecretGenerationException;
 use Serializor\SecretGenerators\SecretGeneratorFactory;
 use Serializor\Transformers\AnonymousClassTransformer;
@@ -133,7 +134,7 @@ final class Serializor
 
         return [
             new ClosureTransformer(self::$transformUseVarsFunc, self::$resolveUseVarsFunc),
-            new AnonymousClassTransformer(),
+            new AnonymousClassTransformer(new AnonymousClassCodeExtractor()),
         ];
     }
 

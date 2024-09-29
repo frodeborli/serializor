@@ -8,12 +8,11 @@ use Generator;
 use ReflectionObject;
 use RuntimeException;
 use Serializor\CodeExtractors\AnonymousClassCodeExtractor;
-use Serializor\CodeExtractors\AnonymousClassVisitor;
+use Tests\Unit\CodeExtractors\BaseClass as AliasedClass;
 
 use function file_get_contents;
 
 covers(AnonymousClassCodeExtractor::class);
-covers(AnonymousClassVisitor::class);
 
 test('returns the source code of the given anonymous class reflection', function (object $class, array $memberNamesToDiscard, string $expected): void {
     $reflectionObject = new ReflectionObject($class);
@@ -58,17 +57,17 @@ test('returns the source code of the given anonymous class reflection', function
             new class extends BaseClass {},
             [],
             <<<EOF
-            class  extends BaseClass
+            class  extends \Tests\Unit\CodeExtractors\BaseClass
             {
             }
             EOF,
         ];
 
         yield 'a class with an interface' => [
-            new class implements Interface1 {},
+            new class implements Interface1, Interface2 {},
             [],
             <<<EOF
-            class  implements Interface1
+            class  implements \Tests\Unit\CodeExtractors\Interface1, \Tests\Unit\CodeExtractors\Interface2
             {
             }
             EOF,
@@ -129,18 +128,44 @@ test('returns the source code of the given anonymous class reflection', function
         ];
 
         yield 'a class with a constructor with promoted arguments' => [
-            new class(0, '') {
+            new class(0, null) {
                 public function __construct(
-                    private int $a,
-                    private string $b,
+                    private int|(BaseClass&Interface1) $a,
+                    private ?BaseClass $b,
                 ) {}
             },
             ['__construct'],
             <<<EOF
             class 
             {
-                private int \$a;
-                private string \$b;
+                private int|(\Tests\Unit\CodeExtractors\BaseClass&\Tests\Unit\CodeExtractors\Interface1) \$a;
+                private ?\Tests\Unit\CodeExtractors\BaseClass \$b;
+            }
+            EOF,
+        ];
+
+        yield 'a class with not-qualified property type' => [
+            new class {
+                private BaseClass $a;
+            },
+            ['__construct'],
+            <<<EOF
+            class 
+            {
+                private \Tests\Unit\CodeExtractors\BaseClass \$a;
+            }
+            EOF,
+        ];
+
+        yield 'a class with aliased property type' => [
+            new class {
+                private AliasedClass $a;
+            },
+            ['__construct'],
+            <<<EOF
+            class 
+            {
+                private \Tests\Unit\CodeExtractors\BaseClass \$a;
             }
             EOF,
         ];
@@ -169,3 +194,6 @@ class BaseClass {}
 
 /** @internal */
 interface Interface1 {}
+
+/** @internal */
+interface Interface2 {}

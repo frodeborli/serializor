@@ -4,14 +4,22 @@ declare(strict_types=1);
 
 namespace Serializor\Transformers;
 
-use PhpToken;
+use Closure;
+use ParseError;
+use ReflectionClass;
 use ReflectionObject;
+use ReflectionProperty;
 use Serializor\ClosureStream;
+use Serializor\CodeExtractors\CodeExtractor;
 use Serializor\SerializerError;
 use Serializor\Stasis;
 use Serializor\TransformerInterface;
 
+use function array_key_exists;
+use function file_get_contents;
+use function get_debug_type;
 use function hash;
+use function is_object;
 
 /**
  * Provides serialization of anonymous classes for Serializor.
@@ -20,45 +28,68 @@ use function hash;
  */
 final class AnonymousClassTransformer implements TransformerInterface
 {
-    private const STARTING = 0;
-    private const CONSTRUCTOR_ARGS = 1;
-    private const BEFORE_BODY = 2;
-    private const BODY = 4;
-    private const CLASS_MEMBER_NAME = 5;
-    private const CLASS_MEMBER_BODY = 6;
-    private const CLASS_CONSTRUCTOR_ARGS = 7;
-    private const DONE = 255;
+    /** @var array<string, string> $sourceCache */
+    private static array $sourceCache = [];
 
-    private static array $tokenCache = [];
+    /** @var array<string, array{code: string}> $functionCache */
     private static array $functionCache = [];
+
+    /** @var array<string, Closure():object> $classMakerCache */
     private static array $classMakerCache = [];
+
+    public function __construct(
+        private CodeExtractor $codeExtractor,
+    ) {}
 
     public function transforms(mixed $value): bool
     {
-        return \is_object($value) && \str_starts_with(\get_class($value), 'class@anonymous');
+        return is_object($value) && (new ReflectionClass($value))->isAnonymous();
     }
 
     public function resolves(Stasis $value): bool
     {
-        return $value->getClassName() == 'class@anonymous';
+        return $value->getClassName() === 'class@anonymous';
     }
 
     public function transform(mixed $value): mixed
     {
         if (!$this->transforms($value)) {
             throw new SerializerError("Can't transform " . get_debug_type($value));
-            return false;
         }
         $ro = new ReflectionObject($value);
+        $hash = $this->getClassHash($ro);
 
         $frozen = new Stasis('class@anonymous');
-        $frozen->p['|hash'] = self::getClassHash($ro);
-        $frozen->p['|code'] = self::getCode($ro);
+        $frozen->p['|hash'] = $hash;
+        $frozen->p['|code'] = $this->getCode($ro, $hash);
         $parentRo = $ro->getParentClass();
         $frozen->p['|extends'] = $parentRo ? $parentRo->getName() : null;
         $frozen->p['|implements'] = $ro->getInterfaceNames();
-        $frozen->p['|props'] = Stasis::getObjectProperties($value);
+        $frozen->p['|props'] = $this->getObjectProperties($ro, $value);
         return $frozen;
+    }
+
+    private function getObjectProperties(ReflectionObject $reflectionObject, object $object): array
+    {
+        $cro = $reflectionObject;
+        $result = [];
+        $prefix = '';
+        do {
+            foreach ($cro->getProperties() as $rp) {
+                if ($rp->isStatic()) {
+                    continue;
+                }
+                if ($rp->isInitialized($object)) {
+                    $result[$prefix . $rp->getName()] = $rp->getValue($object);
+                }
+            }
+            $cro = $cro->getParentClass();
+            if ($cro !== false) {
+                $prefix = $cro->getName() . "\0";
+            }
+        } while ($cro !== false);
+
+        return $result;
     }
 
     public function resolve(mixed $value): mixed
@@ -73,177 +104,64 @@ final class AnonymousClassTransformer implements TransformerInterface
             $code = 'return static function() {
                 return new ' . $value->p['|code'] . ';
             };';
+            // FIXME: CHeck if `ClosureStream` should be unregistered after use
             ClosureStream::register();
-            self::$classMakerCache[$hash] = require(ClosureStream::PROTOCOL . '://' . $code);
+            try {
+                self::$classMakerCache[$hash] = require(ClosureStream::PROTOCOL . '://' . $code);
+            } catch (ParseError) {
+                throw new SerializerError('Could not parse stasis to anonymous class');
+            }
         }
 
         $instance = self::$classMakerCache[$hash]();
 
-        Stasis::setObjectProperties($instance, $value->p['|props']);
+        $this->setObjectProperties($instance, $value->p['|props']);
 
         return $instance;
     }
 
-    private static function getCode(ReflectionObject $ro, array $discardMembers = ['__construct']): string
+    private function setObjectProperties(object $value, array $properties): void
     {
-        $hash = self::getClassHash($ro);
+        $reflectionObject = new ReflectionObject($value);
+        $prefix = '';
+        do {
+            Closure::bind(function () use ($value, $reflectionObject, $properties, $prefix) {
+                foreach ($reflectionObject->getProperties() as $reflectionProperty) {
+                    if ($reflectionProperty->isStatic()) {
+                        continue;
+                    }
+                    $name = $prefix . $reflectionProperty->getName();
+                    if (array_key_exists($name, $properties)) {
+                        $reflectionProperty->setValue($value, $properties[$name]);
+                    }
+                }
+            }, $value, $reflectionObject->getName())();
+
+            $reflectionObject = $reflectionObject->getParentClass();
+            if ($reflectionObject !== false) {
+                $prefix = $reflectionObject->getName() . "\0";
+            }
+        } while ($reflectionObject !== false);
+    }
+
+    private function getCode(ReflectionObject $ro, string $hash, array $discardMembers = ['__construct']): string
+    {
         if (isset(self::$functionCache[$hash])) {
             return self::$functionCache[$hash]['code'];
         }
+
         $sourceFile = $ro->getFileName();
-        if (isset(self::$tokenCache[$sourceFile])) {
-            /** @var PhpToken[] */
-            $tokens = self::$tokenCache[$sourceFile];
-        } else {
-            $tokens = self::$tokenCache[$sourceFile] = PhpToken::tokenize(file_get_contents($sourceFile));
-        }
-
-        $constructorMembers = [];
-        $currentConstructorMemberToken = null;
-
-        $capture = false;
-        $capturedTokens = [];
-        $stackDepth = 0;
-        $state = self::STARTING;
-        $stateChangeToken = null;
-        $memberNameToken = null;
-        $stack = [];
-        foreach ($tokens as $token) {
-            if (!$capture) {
-                if ($token->line === $ro->getStartLine() && $token->id === T_CLASS) {
-                    $capture = true;
-                } else {
-                    continue;
-                }
-            }
-            if (!$token->isIgnorable()) {
-                if ($stackDepth === 0 && \str_contains(",)}];", $token->text)) {
-                    break;
-                }
-            }
-
-            if ($state === self::STARTING && $token->text === '(') {
-                $state = self::CONSTRUCTOR_ARGS;
-                $stateChangeToken = $token;
-            } elseif ($state === self::CONSTRUCTOR_ARGS && $token->text === ')') {
-                $state = self::BEFORE_BODY;
-                // remove passed args
-                while ($capturedTokens[count($capturedTokens) - 1] !== $stateChangeToken) {
-                    array_pop($capturedTokens);
-                }
-                $stateChangeToken = $token;
-            } elseif ($state === self::BEFORE_BODY && $token->text === '{') {
-                $state = self::BODY;
-                $stateChangeToken = $token;
-            } elseif ($state === self::BODY && $stackDepth === 1 && $token->text === '}') {
-                $state = self::DONE;
-                $stateChangeToken = $token;
-            } elseif ($state === self::BODY && $stackDepth === 1) {
-                if (!$token->isIgnorable()) {
-                    $state = self::CLASS_MEMBER_NAME;
-                    $stateChangeToken = $token;
-                }
-            } elseif ($state === self::CLASS_MEMBER_NAME && $stackDepth === 1) {
-                if (!$token->isIgnorable()) {
-                    if ($token->text === ';') {
-                        $state = self::BODY;
-                    } elseif (in_array($token->text, ['=', '{'])) {
-                        $state = self::CLASS_MEMBER_BODY;
-                    } elseif ($token->text === '(' && $memberNameToken?->text === '__construct') {
-                        $state = self::CLASS_CONSTRUCTOR_ARGS;
-                    } else {
-                        $memberNameToken = $token;
-                    }
-                }
-            } elseif ($state === self::CLASS_CONSTRUCTOR_ARGS) {
-                if (in_array($token->text, [')', ',']) && $stackDepth === 2) {
-                    if ($currentConstructorMemberToken !== null) {
-                        $tmpTokens = [];
-                        do {
-                            $topToken = array_pop($capturedTokens);
-                            $tmpTokens[] = $topToken;
-                            if ($topToken->text === '=') {
-                                // remove assignment
-                                $tmpTokens = [];
-                                $testWhitespace = array_pop($capturedTokens);
-                                if (!$testWhitespace->isIgnorable()) {
-                                    $capturedTokens[] = $testWhitespace;
-                                }
-                            }
-                        } while ($topToken !== $currentConstructorMemberToken);
-                        $currentConstructorMemberToken = null;
-                        $constructorMembers[] = array_reverse($tmpTokens);
-                    }
-                    if ($token->text === ')') {
-                        $state = self::CLASS_MEMBER_BODY;
-                    }
-                } elseif ($currentConstructorMemberToken === null && !$token->isIgnorable()) {
-                    if (in_array($token->text, ['public', 'protected', 'private'])) {
-                        $currentConstructorMemberToken = $token;
-                    }
-                }
-            } elseif ($state === self::CLASS_MEMBER_BODY) {
-                if ($stackDepth === 2 && $token->text === '}') {
-                    $state = self::BODY;
-                } elseif ($stackDepth === 1 && $token->text === ';') {
-                    $state = self::BODY;
-                }
-            }
-
-            $capturedTokens[] = $token;
-
-            if ($state === self::BODY && $memberNameToken !== null) {
-                if (in_array($memberNameToken->text, $discardMembers)) {
-                    // discard this member
-                    while ($capturedTokens !== [] && array_pop($capturedTokens) !== $stateChangeToken) {
-                    }
-                }
-                if ($memberNameToken->text === '__construct') {
-                    foreach ($constructorMembers as $member) {
-                        foreach ($member as $memberToken) {
-                            $capturedTokens[] = $memberToken;
-                        }
-                        $capturedTokens[] = new PhpToken(59, ';');
-                    }
-                }
-                $memberNameToken = null;
-            }
-
-
-            if ($token->text === '{') {
-                $stack[$stackDepth++] = '}';
-            } elseif ($token->text === '(') {
-                $stack[$stackDepth++] = ')';
-            } elseif ($token->text === '[') {
-                $stack[$stackDepth++] = ']';
-            } elseif ($stackDepth > 0 && $stack[$stackDepth - 1] === $token->text) {
-                --$stackDepth;
-                if ($stackDepth === 0 && $token->text === '}') {
-                    if ($token->line !== $ro->getEndLine() && $token->line === $ro->getStartLine()) {
-                        $capture = false;
-                        $capturedTokens = [];
-                    } else {
-                        break;
-                    }
-                }
-            }
-            if ($state === self::DONE) {
-                break;
-            }
-        }
-        $codes = [];
-        foreach ($capturedTokens as $token) {
-            $codes[] = $token->text;
-        }
+        $source = self::$sourceCache[$sourceFile]
+            ??= file_get_contents($sourceFile);
 
         self::$functionCache[$hash] = [
-            'code' => \implode('', $codes)
+            'code' => $this->codeExtractor->extract($ro, $discardMembers, $source),
         ];
 
         return self::$functionCache[$hash]['code'];
     }
 
-    private static function getClassHash(ReflectionObject $ro): string
+    private function getClassHash(ReflectionObject $ro): string
     {
         $pco = $ro->getParentClass();
         $hash = ($ro->getDocComment() ?: '')
