@@ -17,6 +17,7 @@ use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter\Standard;
 use ReflectionObject;
+use Reflector;
 use RuntimeException;
 
 use function in_array;
@@ -32,7 +33,7 @@ final class AnonymousClassCodeExtractor extends NodeVisitorAbstract implements C
 
     /** @param array<string, string> $memberNamesToDiscard */
     public function extract(
-        ReflectionObject $reflection,
+        Reflector $reflection,
         array $memberNamesToDiscard,
         string $code,
     ): string {

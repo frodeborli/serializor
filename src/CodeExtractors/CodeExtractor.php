@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Serializor\CodeExtractors;
 
-use ReflectionObject;
+use Reflector;
 
 interface CodeExtractor
 {
     /** @param array<string, string> $memberNamesToDiscard */
-    public function extract(ReflectionObject $reflection, array $memberNamesToDiscard, string $code): string;
+    public function extract(Reflector $reflection, array $memberNamesToDiscard, string $code): string;
 }
