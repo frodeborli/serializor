@@ -6,16 +6,18 @@ namespace Serializor\Transformers;
 
 use Closure;
 use ReflectionClass;
+use ReflectionFunction;
 use ReflectionMethod;
 use Serializor\ClosureStream;
+use Serializor\CodeExtractors\CodeExtractor;
 use Serializor\Reflect;
-use Serializor\ReflectionClosure;
 use Serializor\SerializerError;
 use Serializor\Stasis;
 use Serializor\TransformerInterface;
 use WeakMap;
 
 use function class_exists;
+use function file_get_contents;
 use function function_exists;
 use function get_debug_type;
 use function hash;
@@ -23,6 +25,7 @@ use function is_array;
 use function is_callable;
 use function is_object;
 use function is_string;
+use function preg_match;
 
 /**
  * Provides serialization of Closures for Serializor.
@@ -47,8 +50,11 @@ final class ClosureTransformer implements TransformerInterface
      * @param ?Closure(array<string, mixed>):array<string, mixed> $transformUseVariablesFunc 
      * @param ?Closure(array<string, mixed>):array<string, mixed> $resolveUseVariablesFunc 
      */
-    public function __construct(?Closure $transformUseVariablesFunc = null, ?Closure $resolveUseVariablesFunc = null)
-    {
+    public function __construct(
+        private CodeExtractor $codeExtractor,
+        ?Closure $transformUseVariablesFunc = null,
+        ?Closure $resolveUseVariablesFunc = null,
+    ) {
         /** @var WeakMap<Closure|Stasis,Closure|Stasis>  */
         self::$transformedObjects ??= new WeakMap();
 
@@ -81,33 +87,33 @@ final class ClosureTransformer implements TransformerInterface
             return self::$transformedObjects[$value];
         }
 
-        $reflectionClosure = new ReflectionClosure($value);
+        $reflectionFunction = new ReflectionFunction($value);
         $frozen = new Stasis(Closure::class);
 
-        $closureThis = $reflectionClosure->getClosureThis();
-        $closureScopeClass = $reflectionClosure->getClosureScopeClass();
-        $closureCalledClass = $reflectionClosure->getClosureCalledClass();
+        $closureThis = $reflectionFunction->getClosureThis();
+        $closureScopeClass = $reflectionFunction->getClosureScopeClass();
+        $closureCalledClass = $reflectionFunction->getClosureCalledClass();
 
-        $frozen->p['name'] = $reflectionClosure->getName();
-        $frozen->p['hash'] = Reflect::getHash($reflectionClosure);
+        $frozen->p['name'] = $reflectionFunction->getName();
+        $frozen->p['hash'] = Reflect::getHash($reflectionFunction);
         if ($closureThis) {
-            $frozen->p['callable'] = [$closureThis, $reflectionClosure->getName()];
+            $frozen->p['callable'] = [$closureThis, $reflectionFunction->getName()];
         } elseif ($closureCalledClass) {
-            $frozen->p['callable'] = [$closureCalledClass->getName(), $reflectionClosure->getName()];
-        } elseif (function_exists($reflectionClosure->getName())) {
-            $frozen->p['callable'] = $reflectionClosure->getName();
+            $frozen->p['callable'] = [$closureCalledClass->getName(), $reflectionFunction->getName()];
+        } elseif (function_exists($reflectionFunction->getName())) {
+            $frozen->p['callable'] = $reflectionFunction->getName();
         } else {
             $frozen->p['callable'] = null;
         }
         $frozen->p['this'] = $closureThis;
         $frozen->p['scope_class'] = $closureScopeClass?->getName();
         $frozen->p['called_class'] = $closureCalledClass?->getName();
-        $frozen->p['namespace'] = $reflectionClosure->getNamespaceName();
+        $frozen->p['namespace'] = $reflectionFunction->getNamespaceName();
 
         /**
          * We can't serialize the code of native functions
          */
-        if ($reflectionClosure->isInternal()) {
+        if ($reflectionFunction->isInternal()) {
             self::$transformedObjects[$value] = $frozen;
             self::$transformedObjects[$frozen] = $value;
             return $frozen;
@@ -119,16 +125,16 @@ final class ClosureTransformer implements TransformerInterface
          */
         if ($closureThis !== null) {
             $rc = Reflect::getReflectionClass($closureThis);
-            if (self::resolveMethod($rc, $reflectionClosure->getName())) {
+            if (self::resolveMethod($rc, $reflectionFunction->getName())) {
                 self::$transformedObjects[$value] = $frozen;
                 self::$transformedObjects[$frozen] = $value;
                 return $frozen;
             }
         }
         if ($closureCalledClass !== null) {
-            $rm = self::resolveMethod($closureCalledClass, $reflectionClosure->getName());
+            $rm = self::resolveMethod($closureCalledClass, $reflectionFunction->getName());
             if ($rm && $rm->isStatic()) {
-                $frozen->p['callable'] = [$closureCalledClass->getName(), $reflectionClosure->getName()];
+                $frozen->p['callable'] = [$closureCalledClass->getName(), $reflectionFunction->getName()];
                 self::$transformedObjects[$value] = $frozen;
                 self::$transformedObjects[$frozen] = $value;
                 return $frozen;
@@ -138,13 +144,15 @@ final class ClosureTransformer implements TransformerInterface
         self::$transformedObjects[$value] = $frozen;
         self::$transformedObjects[$frozen] = $value;
 
-        $frozen->p['use'] = ($this->transformUseVariablesFunc)($reflectionClosure->getClosureUsedVariables());
+        $frozen->p['use'] = ($this->transformUseVariablesFunc)($reflectionFunction->getClosureUsedVariables());
 
-        $frozen->p['code'] = $reflectionClosure->getCode();
-        if (!$reflectionClosure->usedThis()) {
+        $code = $this->codeExtractor->extract($reflectionFunction, [], file_get_contents($reflectionFunction->getFileName()));
+
+        $frozen->p['code'] = $code;
+        if (!preg_match('/\$this(?:\W|$)/', $code)) {
             $frozen->p['this'] = null;
         }
-        $frozen->p['is_static_function'] = $reflectionClosure->usedStatic();
+        $frozen->p['is_static_function'] = (bool) preg_match('/(?:\W|^)(?:self|static|parent)(?:\W|$)/', $code);
         return $frozen;
     }
 

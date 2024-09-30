@@ -10,6 +10,7 @@ use ReflectionClass;
 use Serializor\SerializerError;
 use Serializor\Stasis;
 use Serializor\Transformers\ClosureTransformer;
+use Tests\Fixtures\TestCodeExtractor;
 
 use function printf;
 
@@ -17,7 +18,7 @@ covers(ClosureTransformer::class);
 
 describe('transforming', function (): void {
     test('informs about the value it transforms', function (mixed $input, bool $expected): void {
-        $transformer = new ClosureTransformer();
+        $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
         $actual = $transformer->transforms($input);
 
@@ -32,7 +33,7 @@ describe('transforming', function (): void {
         ]);
 
     test('transforms `Closures` into `Stasis`', function (Closure $input): void {
-        $transformer = new ClosureTransformer();
+        $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
         $actual = $transformer->transform($input);
 
@@ -64,7 +65,7 @@ describe('transforming', function (): void {
 
     test('transforms the same `Closures` into the same `Stasis`', function (): void {
         $input = static fn(): null => null;
-        $transformer = new ClosureTransformer();
+        $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
         $actual = $transformer->transform($input);
         $expected = $transformer->transform($input);
@@ -73,7 +74,7 @@ describe('transforming', function (): void {
     });
 
     describe('generated stasis stores basic information about closure', function (): void {
-        $transformer = new ClosureTransformer();
+        $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
         test('name', function () use ($transformer): void {
             $actual = $transformer->transform(namedClosure(...));
@@ -107,7 +108,11 @@ describe('transforming', function (): void {
             expect($actual->p['this'])->toBeNull();
         });
 
-        test('this', function () use ($transformer): void {
+        test('this', function (): void {
+            $transformer = new ClosureTransformer(new TestCodeExtractor('function () {
+                $this;
+            }'));
+
             $actual = $transformer->transform(function () {
                 $this;
             });
@@ -168,6 +173,7 @@ describe('transforming', function (): void {
             $variable = 1;
             $input = function () use ($used, $variable): void {};
             $transformer = new ClosureTransformer(
+                new TestCodeExtractor(''),
                 transformUseVariablesFunc: $transformUseVariablesFunc
             );
 
@@ -179,7 +185,7 @@ describe('transforming', function (): void {
 
     test('transforms only closures', function (): void {
         $input = 'not-a-closure';
-        $transformer = new ClosureTransformer();
+        $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
         $actual = $transformer->transform($input);
 
@@ -188,7 +194,7 @@ describe('transforming', function (): void {
 });
 
 describe('resolving', function (): void {
-    $transformer = new ClosureTransformer();
+    $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
     test('informs about the value it resolves', function (Stasis $input, bool $expected) use ($transformer): void {
         $actual = $transformer->resolves($input);
@@ -267,6 +273,7 @@ describe('resolving', function (): void {
         $stasis->p['code'] = 'function () use ($used, $variable) {return [\'used\' => $used, \'variable\' => $variable];}';
         $stasis->p['use'] = ['used' => 0, 'variable' => 1];
         $transformer = new ClosureTransformer(
+            new TestCodeExtractor(''),
             resolveUseVariablesFunc: $resolveUseVariablesFunc
         );
 

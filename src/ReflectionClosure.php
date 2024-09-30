@@ -5,31 +5,26 @@ declare(strict_types=1);
 namespace Serializor;
 
 use Closure;
-use PhpToken;
 use ReflectionFunction;
 use RuntimeException;
+use Serializor\CodeExtractors\CodeExtractor;
 
 use function file_get_contents;
-use function implode;
+use function preg_match;
 use function str_contains;
-
-use const T_FN;
-use const T_FUNCTION;
-use const T_STATIC;
 
 final class ReflectionClosure extends ReflectionFunction
 {
     /** @var array<string, FunctionDescription> $functionCache */
     private static array $functionCache = [];
 
-    /** @var array<string, array<int, PhpToken>> $tokenCache */
-    private static array $tokenCache = [];
-
     private FunctionDescription $functionDescription;
 
     /** @param callable-string|Closure $function */
-    public function __construct(string|Closure $function)
-    {
+    public function __construct(
+        string|Closure $function,
+        private CodeExtractor $codeExtractor,
+    ) {
         parent::__construct($function);
 
         $this->functionDescription = static::$functionCache[Reflect::getHash($this)]
@@ -38,8 +33,6 @@ final class ReflectionClosure extends ReflectionFunction
 
     private function generateFunctionDescription(): FunctionDescription
     {
-        $usedThis = false;
-        $usedStatic = false;
         $sourceFile = $this->getFileName();
 
         if ($sourceFile === false) {
@@ -53,63 +46,13 @@ final class ReflectionClosure extends ReflectionFunction
         if (str_contains($sourceFile, 'eval()\'d')) {
             throw new RuntimeException("Can't serialize a closure that was generated with eval()");
         }
-        $tokens = self::$tokenCache[$sourceFile]
-            ??= PhpToken::tokenize(file_get_contents($sourceFile));
 
-        $capture = false;
-        $capturedTokens = [];
-        $stackDepth = 0;
-        $stack = [];
-
-        foreach ($tokens as $idx => $token) {
-            if (!$capture) {
-                if ($token->line === $this->getStartLine()) {
-                    if ($token->is(T_STATIC) && $tokens[$idx + 2]?->is([T_FUNCTION, T_FN])) {
-                        $capture = true;
-                    } elseif ($token->is([T_FUNCTION, T_FN])) {
-                        $capture = true;
-                    } else {
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
-            }
-            if (!$token->isIgnorable()) {
-                if ($stackDepth === 0 && $token->is([',', ')', '}', ']', ';'])) {
-                    break;
-                }
-                if (!$usedStatic && $token->is(['self', 'static', 'parent'])) {
-                    $usedStatic = true;
-                }
-                if (!$usedThis && $token->is('$this')) {
-                    $usedThis = true;
-                }
-            }
-            $capturedTokens[] = $token;
-            if ($token->text === '{') {
-                $stack[$stackDepth++] = '}';
-            } elseif ($token->text === '(') {
-                $stack[$stackDepth++] = ')';
-            } elseif ($token->text === '[') {
-                $stack[$stackDepth++] = ']';
-            } elseif ($stackDepth > 0 && $stack[$stackDepth - 1] === $token->text) {
-                --$stackDepth;
-                if ($stackDepth === 0 && $token->text === '}') {
-                    if ($token->line !== $this->getEndLine() && $token->line === $this->getStartLine()) {
-                        $capture = false;
-                        $capturedTokens = [];
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
+        $code = $this->codeExtractor->extract($this, [], file_get_contents($sourceFile));
 
         return new FunctionDescription(
-            code: implode($capturedTokens),
-            usedThis: $usedThis,
-            usedStatic: $usedStatic,
+            code: $code,
+            usedThis: (bool) preg_match('/\$this(?:\W|$)/', $code),
+            usedStatic: (bool) preg_match('/(?:\W|^)(?:self|static|parent)(?:\W|$)/', $code),
         );
     }
 
