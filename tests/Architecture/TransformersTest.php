@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Architecture;
 
-use Serializor\TransformerInterface;
+use Serializor\Transformers\Transformer;
 
 arch()
     ->expect('Serializor\Transformers')
     ->toBeClasses()
-    ->toExtend(TransformerInterface::class);
+    ->ignoring(Transformer::class)
+    ->toExtend(Transformer::class);

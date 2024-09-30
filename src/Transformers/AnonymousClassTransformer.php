@@ -13,7 +13,7 @@ use Serializor\ClosureStream;
 use Serializor\CodeExtractors\CodeExtractor;
 use Serializor\SerializerError;
 use Serializor\Stasis;
-use Serializor\TransformerInterface;
+use Serializor\Transformers\Transformer;
 
 use function array_key_exists;
 use function file_get_contents;
@@ -26,7 +26,7 @@ use function is_object;
  *
  * @package Serializor
  */
-final class AnonymousClassTransformer implements TransformerInterface
+final class AnonymousClassTransformer implements Transformer
 {
     /** @var array<string, string> $sourceCache */
     private static array $sourceCache = [];

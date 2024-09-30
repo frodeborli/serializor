@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Serializor;
+namespace Serializor\Transformers;
+
+use Serializor\Stasis;
 
 /**
  * Interface for classes that provide customized serialization for
@@ -10,7 +12,7 @@ namespace Serializor;
  *
  * @package Serializor
  */
-interface TransformerInterface
+interface Transformer
 {
     /**
      * Return true if this transformer can serialize the

@@ -13,7 +13,7 @@ use Serializor\CodeExtractors\CodeExtractor;
 use Serializor\Reflect;
 use Serializor\SerializerError;
 use Serializor\Stasis;
-use Serializor\TransformerInterface;
+use Serializor\Transformers\Transformer;
 use WeakMap;
 
 use function class_exists;
@@ -32,7 +32,7 @@ use function preg_match;
  *
  * @package Serializor
  */
-final class ClosureTransformer implements TransformerInterface
+final class ClosureTransformer implements Transformer
 {
     /** @var array<string, Closure(array, ?object, ?string):Closure> $codeMakers */
     private static array $codeMakers = [];

@@ -10,7 +10,7 @@ use Serializor\Box;
 use Serializor\SerializerError;
 use Serializor\Serializor;
 use Serializor\Stasis;
-use Serializor\TransformerInterface;
+use Serializor\Transformers\Transformer;
 use Throwable;
 use WeakMap;
 
@@ -26,7 +26,7 @@ final class Codec
      * Transformer implementations are used to serialize classes
      * whenever normal serialization fails.
      *
-     * @var TransformerInterface[]
+     * @var Transformer[]
      */
     private array $transformers = [];
 
@@ -93,7 +93,7 @@ final class Codec
      * Add a custom transformer that will serialize and unserialize special values
      * that can't normally be serialized.
      */
-    public function addTransformer(TransformerInterface $transformer): void
+    public function addTransformer(Transformer $transformer): void
     {
         $this->transformers[] = $transformer;
     }
@@ -104,7 +104,7 @@ final class Codec
      *
      * @var class-string<mixed>|mixed
      */
-    private function getTransformer(mixed $value): ?TransformerInterface
+    private function getTransformer(mixed $value): ?Transformer
     {
         foreach ($this->transformers as $transformer) {
             if ($transformer->transforms($value)) {
@@ -115,7 +115,7 @@ final class Codec
         return null;
     }
 
-    private function getResolver(Stasis $value): ?TransformerInterface
+    private function getResolver(Stasis $value): ?Transformer
     {
         foreach ($this->transformers as $transformer) {
             if ($transformer->resolves($value)) {
