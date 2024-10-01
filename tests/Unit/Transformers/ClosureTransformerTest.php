@@ -187,10 +187,9 @@ describe('transforming', function (): void {
         $input = 'not-a-closure';
         $transformer = new ClosureTransformer(new TestCodeExtractor(''));
 
-        $actual = $transformer->transform($input);
-
-        expect($actual)->toBeFalse();
-    });
+        $transformer->transform($input);
+    })
+        ->throws(SerializerError::class);
 });
 
 describe('resolving', function (): void {

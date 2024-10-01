@@ -51,7 +51,7 @@ final class AnonymousClassTransformer implements Transformer
         return $value->getClassName() === 'class@anonymous';
     }
 
-    public function transform(mixed $value): mixed
+    public function transform(mixed $value): Stasis
     {
         if (!$this->transforms($value)) {
             throw new SerializerError("Can't transform " . get_debug_type($value));

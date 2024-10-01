@@ -77,10 +77,10 @@ final class ClosureTransformer implements Transformer
         return $value->getClassName() === Closure::class;
     }
 
-    public function transform(mixed $value): mixed
+    public function transform(mixed $value): Stasis
     {
-        if (!($value instanceof Closure)) {
-            return false;
+        if (!$value instanceof Closure) {
+            throw new SerializerError('Could not resolve non-closure values');
         }
 
         if (isset(self::$transformedObjects[$value])) {

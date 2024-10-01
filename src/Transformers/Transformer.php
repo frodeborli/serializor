@@ -36,7 +36,7 @@ interface Transformer
      * value and return true. The function should also invoke the provided
      * $walker function on any nested values in the transformed value.
      */
-    public function transform(mixed $value): mixed;
+    public function transform(mixed $value): Stasis;
 
     /**
      * Should ignore the provided value and return false if the value is
@@ -44,5 +44,5 @@ interface Transformer
      * that can't be serialized and return true. The $walker function can be
      * used to "untransform" nested values first.
      */
-    public function resolve(mixed $value): mixed;
+    public function resolve(Stasis $value): mixed;
 }
