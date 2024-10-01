@@ -141,7 +141,7 @@ final class Codec
         } catch (Throwable $e) {
             $v = [&$value];
             $result = $this->transform($v, [], null);
-            $result = \serialize(new Box($result, $this->shortcuts));
+            $result = \serialize(new Box($result[0], $this->shortcuts));
         } finally {
             $this->referenceSources = [];
             $this->referenceTargets = [];
@@ -291,7 +291,7 @@ final class Codec
                         $this->resolve($shortcut);
                     }
                 }
-                return $result->val;
+                return $result->value;
             }
 
             return $result;
