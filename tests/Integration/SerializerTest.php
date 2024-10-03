@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Tests;
+namespace Tests\Integration;
 
 use Closure;
 use ReflectionClass;
-use Serializor;
+use Serializor\Serializor;
 use stdClass;
+
+use function Tests\s;
+
+covers(Serializor::class);
 
 class ObjTyped
 {
@@ -110,7 +114,6 @@ class A3
     }
 }
 
-
 test('non-static closure with simple const', function () {
     $c = function () {
         return ObjWithConst::FOO;
@@ -120,6 +123,7 @@ test('non-static closure with simple const', function () {
 
     expect($u)->toBe('bar');
 });
+
 test('static closure with simple const', function () {
     $c = static function () {
         return ObjWithConst::FOO;
@@ -154,6 +158,7 @@ test('closure use return closure', function () {
 
     expect($u(1))->toEqual($v + 1);
 });
+
 test('closure use return closure by ref', function () {
     $a = function ($p) {
         return $p + 1;
@@ -190,6 +195,7 @@ test('closure use self in array', function () {
 
     expect($u())->toEqual($u);
 });
+
 test('closure use self in object', function () {
     $a = new stdClass();
 
@@ -246,6 +252,7 @@ test('closure use self in instance2', function () {
     $u = s($c);
     expect($u())->toBeTrue();
 });
+
 test('closure serialization twice', function () {
     $a = function ($p) {
         return $p;
@@ -268,6 +275,7 @@ test('closure real serialization', function () {
     $u = s(s($f));
     expect($u(2, 3))->toEqual(5);
 });
+
 test('closure nested', function () {
     $o = function ($a) {
         // this should never happen
@@ -279,7 +287,8 @@ test('closure nested', function () {
             return ! $b;
         };
 
-        $ns = s($n);
+        // FIXME: This function call should not be fully namespaced
+        $ns = \Tests\s($n);
 
         return $ns(false);
     };
@@ -327,6 +336,7 @@ test('closure bind to object scope', function () {
 
     expect($u())->toEqual('protected called');
 });
+
 test('closure bind to object static scope', function () {
     $a = new A();
 

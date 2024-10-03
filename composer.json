@@ -9,16 +9,13 @@
     ],
     "type": "library",
     "require-dev": {
-        "pestphp/pest": "^1.18"
+        "pestphp/pest": "^3.0"
     },
     "license": "MIT",
     "autoload": {
         "psr-4": {
             "Serializor\\": "src/"
-        },
-        "files": [
-            "Serializor.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
@@ -33,7 +30,8 @@
     ],
     "minimum-stability": "stable",
     "require": {
-        "php": "^7.3|^8.0"
+        "php": "^7.3|^8.0",
+        "nikic/php-parser": "^5.2"
     },
     "config": {
         "allow-plugins": {

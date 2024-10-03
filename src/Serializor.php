@@ -2,11 +2,21 @@
 
 declare(strict_types=1);
 
+namespace Serializor;
+
+use Closure;
 use Serializor\Codec;
+use Serializor\CodeExtractors\AnonymousClassCodeExtractor;
+use Serializor\CodeExtractors\ClosureCodeExtractor;
 use Serializor\SecretGenerators\SecretGenerationException;
 use Serializor\SecretGenerators\SecretGeneratorFactory;
 use Serializor\Transformers\AnonymousClassTransformer;
 use Serializor\Transformers\ClosureTransformer;
+
+use function sys_get_temp_dir;
+
+use const DIRECTORY_SEPARATOR;
+use const PHP_OS_FAMILY;
 
 /**
  * Serializor class responsible for serializing and deserializing data,
@@ -14,7 +24,7 @@ use Serializor\Transformers\ClosureTransformer;
  * serialization of tasks across processes, using a machine-specific secret
  * to enhance security and consistency in serialization.
  */
-class Serializor
+final class Serializor
 {
     /**
      * Singleton instance for the default Serializor codec.
@@ -124,8 +134,8 @@ class Serializor
         }
 
         return [
-            new ClosureTransformer(self::$transformUseVarsFunc, self::$resolveUseVarsFunc),
-            new AnonymousClassTransformer(),
+            new ClosureTransformer(new ClosureCodeExtractor(), self::$transformUseVarsFunc, self::$resolveUseVarsFunc),
+            new AnonymousClassTransformer(new AnonymousClassCodeExtractor()),
         ];
     }
 

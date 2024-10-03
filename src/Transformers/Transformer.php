@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Serializor;
+namespace Serializor\Transformers;
+
+use Serializor\Stasis;
 
 /**
  * Interface for classes that provide customized serialization for
@@ -10,7 +12,7 @@ namespace Serializor;
  *
  * @package Serializor
  */
-interface TransformerInterface
+interface Transformer
 {
     /**
      * Return true if this transformer can serialize the
@@ -34,7 +36,7 @@ interface TransformerInterface
      * value and return true. The function should also invoke the provided
      * $walker function on any nested values in the transformed value.
      */
-    public function transform(mixed $value): mixed;
+    public function transform(mixed $value): Stasis;
 
     /**
      * Should ignore the provided value and return false if the value is
@@ -42,5 +44,5 @@ interface TransformerInterface
      * that can't be serialized and return true. The $walker function can be
      * used to "untransform" nested values first.
      */
-    public function resolve(mixed $value): mixed;
+    public function resolve(Stasis $value): mixed;
 }

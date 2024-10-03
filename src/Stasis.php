@@ -215,55 +215,6 @@ final class Stasis
         return $frozen;
     }
 
-    public static function getObjectProperties(object $value): array
-    {
-        $ro = new \ReflectionObject($value);
-        $cro = $ro;
-        $result = [];
-        do {
-            $prefix = '';
-            foreach ($cro->getProperties() as $rp) {
-                if ($rp->isStatic()) {
-                    continue;
-                }
-                if ($rp->isInitialized($value)) {
-                    $result[$prefix . $rp->getName()] = $rp->getValue($value);
-                }
-            }
-            $cro = $cro->getParentClass();
-            if ($cro !== false) {
-                $prefix = $cro->getName() . "\0";
-            }
-        } while ($cro !== false);
-
-        return $result;
-    }
-
-    public static function setObjectProperties(object $value, array $properties): void
-    {
-        $ro = new \ReflectionObject($value);
-        $cro = $ro;
-        $prefix = '';
-        do {
-            \Closure::bind(function () use ($value, $cro, $properties, $prefix) {
-                foreach ($cro->getProperties() as $rp) {
-                    if ($rp->isStatic()) {
-                        continue;
-                    }
-                    $name = $prefix . $rp->getName();
-                    if (isset($properties[$name]) || array_key_exists($name, $properties)) {
-                        $rp->setValue($value, $properties[$name]);
-                    }
-                }
-            }, $value, $cro->getName())();
-
-            $cro = $cro->getParentClass();
-            if ($cro !== false) {
-                $prefix = $cro->getName() . "\0";
-            }
-        } while ($cro !== false);
-    }
-
     private static function init(): void
     {
         if (self::$results === null) {

@@ -12,7 +12,7 @@ use Closure;
  *
  * @package Serializor
  */
-class UnsignedSerializableClosure
+final class UnsignedSerializableClosure
 {
 
     /**

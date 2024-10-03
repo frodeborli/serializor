@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use Serializor;
+use Serializor\Codec;
+use Serializor\Serializor;
+
+use function get_debug_type;
+use function sprintf;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,6 +44,30 @@ expect()->extend('toBeCode', function ($expected) {
     return $this->value;
 });
 */
+
+expect()->extend('toEqualAfterSerializeAndUnserialize', function (): static {
+    $codec = new Codec('');
+
+    $serialized = $codec->serialize($this->value);
+    $actual     = $codec->unserialize($serialized);
+
+    expect($serialized)->toBeString(
+        sprintf(
+            'Expected %s to be serialized into a string.',
+            get_debug_type($this->value),
+        ),
+    );
+    expect($this->value)->toEqual(
+        $actual,
+        sprintf(
+            'Expected %s to be serialized and then unserialized into a value equal to %s.',
+            get_debug_type($actual),
+            get_debug_type($this->value),
+        ),
+    );
+
+    return $this;
+});
 
 /**
  * Serializes and then unserializes a value, preserving its type.

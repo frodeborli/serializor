@@ -12,7 +12,7 @@ use Closure;
  *
  * @package Serializor
  */
-class SerializableClosure
+final class SerializableClosure
 {
 
     private Closure $closure;

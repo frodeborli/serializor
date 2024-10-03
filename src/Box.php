@@ -13,12 +13,8 @@ namespace Serializor;
  */
 final class Box
 {
-    public mixed $val;
-    public array $shortcuts;
-
-    public function __construct(array $val, array $shortcuts = [])
-    {
-        $this->val = &$val[0];
-        $this->shortcuts = $shortcuts;
-    }
+    public function __construct(
+        public mixed $value,
+        public array $shortcuts = [],
+    ) {}
 }

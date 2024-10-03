@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\SecretGenerators;
 
+use PHPUnit\Framework\Attributes\CoversTrait;
 use Serializor\SecretGenerators\CanExecuteCommand;
 
 use function restore_error_handler;
@@ -11,14 +12,15 @@ use function set_error_handler;
 
 use const E_WARNING;
 
+covers(CanExecuteCommand::class);
+
 test('executes a command and returns its result', function (): void {
     $class = createClassThatCanExecuteCommand();
 
     $actual = $class('echo Hello');
 
     expect($actual)->toBe('Hello');
-})
-    ->coversClass(CanExecuteCommand::class);
+});
 
 test('returns empty string when error occurred', function (): void {
     $class = createClassThatCanExecuteCommand();
@@ -28,8 +30,7 @@ test('returns empty string when error occurred', function (): void {
 
     restore_error_handler();
     expect($actual)->toBe('');
-})
-    ->coversClass(CanExecuteCommand::class);
+});
 
 function createClassThatCanExecuteCommand(): object
 {

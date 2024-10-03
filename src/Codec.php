@@ -6,11 +6,11 @@ namespace Serializor;
 
 use LogicException;
 use ReflectionReference;
-use Serializor;
 use Serializor\Box;
 use Serializor\SerializerError;
+use Serializor\Serializor;
 use Serializor\Stasis;
-use Serializor\TransformerInterface;
+use Serializor\Transformers\Transformer;
 use Throwable;
 use WeakMap;
 
@@ -19,14 +19,14 @@ use WeakMap;
  * customizing the serialization and unserialization process via
  * implementations of the TransformerInterface.
  */
-class Codec
+final class Codec
 {
 
     /**
      * Transformer implementations are used to serialize classes
      * whenever normal serialization fails.
      *
-     * @var TransformerInterface[]
+     * @var Transformer[]
      */
     private array $transformers = [];
 
@@ -93,7 +93,7 @@ class Codec
      * Add a custom transformer that will serialize and unserialize special values
      * that can't normally be serialized.
      */
-    public function addTransformer(TransformerInterface $transformer): void
+    public function addTransformer(Transformer $transformer): void
     {
         $this->transformers[] = $transformer;
     }
@@ -104,7 +104,7 @@ class Codec
      *
      * @var class-string<mixed>|mixed
      */
-    private function getTransformer(mixed $value): ?TransformerInterface
+    private function getTransformer(mixed $value): ?Transformer
     {
         foreach ($this->transformers as $transformer) {
             if ($transformer->transforms($value)) {
@@ -115,7 +115,7 @@ class Codec
         return null;
     }
 
-    private function getResolver(Stasis $value): ?TransformerInterface
+    private function getResolver(Stasis $value): ?Transformer
     {
         foreach ($this->transformers as $transformer) {
             if ($transformer->resolves($value)) {
@@ -141,7 +141,7 @@ class Codec
         } catch (Throwable $e) {
             $v = [&$value];
             $result = $this->transform($v, [], null);
-            $result = \serialize(new Box($result, $this->shortcuts));
+            $result = \serialize(new Box($result[0], $this->shortcuts));
         } finally {
             $this->referenceSources = [];
             $this->referenceTargets = [];
@@ -162,7 +162,7 @@ class Codec
      * Encodes an object structure into a corresponding object structure where
      * values that can't be serialized are converted to Stasis objects.
      */
-    protected function &transform(mixed &$source, array $path, string|int|null $key): mixed
+    private function &transform(mixed &$source, array $path, string|int|null $key): mixed
     {
         if ($source === null || \is_scalar($source)) {
             throw new SerializerError('Trying to encode NULL or scalar');
@@ -291,7 +291,7 @@ class Codec
                         $this->resolve($shortcut);
                     }
                 }
-                return $result->val;
+                return $result->value;
             }
 
             return $result;

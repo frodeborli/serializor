@@ -17,6 +17,8 @@ use function unlink;
 use const DIRECTORY_SEPARATOR;
 use const E_WARNING;
 
+covers(FallbackSecretGenerator::class);
+
 test('generates a secret locally', function (): void {
     $path = createPathToFileThatDoesNotExist();
     $secretGenerator = new FallbackSecretGenerator($path);
@@ -26,19 +28,16 @@ test('generates a secret locally', function (): void {
     expect($actual)->not()->toBeNull();
     expect($path)->toBeFile();
     unlink($path);
-})
-    ->coversClass(FallbackSecretGenerator::class);
+});
 
 test('throws an exception if secret hash could not be generated', function (): void {
     $secretGenerator = new FallbackSecretGenerator('.');
     set_error_handler(fn(): bool => true, E_WARNING);
 
     $secretGenerator->generate();
-
-    restore_error_handler();
 })
     ->throws(SecretGenerationException::class)
-    ->coversClass(FallbackSecretGenerator::class);
+    ->after(fn() => restore_error_handler());
 
 function createPathToFileThatDoesNotExist(): string
 {

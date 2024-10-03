@@ -9,7 +9,7 @@ use ReflectionClass;
 use ReflectionFunction;
 use ReflectionReference;
 
-class Debug
+final class Debug
 {
     private static array $longMemory = [];
     private static int $count = 0;
