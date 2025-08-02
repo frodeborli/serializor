@@ -17,8 +17,7 @@ test('executes a command and returns its result', function (): void {
     $actual = $class('echo Hello');
 
     expect($actual)->toBe('Hello');
-})
-    ->coversClass(CanExecuteCommand::class);
+});
 
 test('returns empty string when error occurred', function (): void {
     $class = createClassThatCanExecuteCommand();
@@ -28,8 +27,7 @@ test('returns empty string when error occurred', function (): void {
 
     restore_error_handler();
     expect($actual)->toBe('');
-})
-    ->coversClass(CanExecuteCommand::class);
+});
 
 function createClassThatCanExecuteCommand(): object
 {

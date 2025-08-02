@@ -27,5 +27,4 @@ test('creates a fitting secret generator for every platform', function (string $
         'BSD'     => ['BSD', BsdSecretGenerator::class],
         'unknown' => ['unknown', FallbackSecretGenerator::class],
         '321364>' => ['321364>', FallbackSecretGenerator::class],
-    ])
-    ->coversClass(SecretGeneratorFactory::class);
+    ]);

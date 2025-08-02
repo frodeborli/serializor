@@ -26,8 +26,7 @@ test('generates a secret locally', function (): void {
     expect($actual)->not()->toBeNull();
     expect($path)->toBeFile();
     unlink($path);
-})
-    ->coversClass(FallbackSecretGenerator::class);
+});
 
 test('throws an exception if secret hash could not be generated', function (): void {
     $secretGenerator = new FallbackSecretGenerator('.');
@@ -37,9 +36,8 @@ test('throws an exception if secret hash could not be generated', function (): v
 
     restore_error_handler();
 })
-    ->throws(SecretGenerationException::class)
-    ->coversClass(FallbackSecretGenerator::class);
-
+    ->throws(SecretGenerationException::class);
+    
 function createPathToFileThatDoesNotExist(): string
 {
     do {

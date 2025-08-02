@@ -126,11 +126,12 @@ class ClosureTransformer implements TransformerInterface
         } else {
             $frozen->p['use'] = $rf->getClosureUsedVariables();
         }
-        $frozen->p['code'] = self::getCode($rf, $usedThis, $usedStatic, $isStaticFunction);
+        $frozen->p['code'] = self::getCode($rf, $usedThis, $usedStatic, $isStaticFunction, $useStatements);
         if (!$usedThis) {
             $frozen->p['this'] = null;
         }
         $frozen->p['is_static_function'] = $isStaticFunction;
+        $frozen->p['use_statements'] = $useStatements;
         return $frozen;
     }
 
@@ -158,8 +159,19 @@ class ClosureTransformer implements TransformerInterface
             }
         }
 
+        $filteredUseStatements = [];
+        foreach ($value->p['use_statements'] ?? [] as $useStatement) {
+            if (trim($value->p['namespace']) == '' && !str_contains($useStatement, '\\')) {
+                continue;
+            }
+            $filteredUseStatements[] = $useStatement;
+        }
+
+        $useStatements = implode("\n", $filteredUseStatements);
+
         $code = <<<PHP
             namespace {$value->p['namespace']} {
+                {$useStatements}
                 return static function(array &\$useVars, ?object \$thisObject, ?string \$scopeClass): \Closure {
                     extract(\$useVars, \EXTR_OVERWRITE | \EXTR_REFS);
                     return \Closure::bind({$value->p['code']}, \$thisObject, \$scopeClass);
@@ -217,12 +229,13 @@ class ClosureTransformer implements TransformerInterface
         return null;
     }
 
-    public static function getCode(ReflectionFunction $rf, bool &$usedThis = null, bool &$usedStatic = null, bool &$isStaticFunction = null): string
+    public static function getCode(ReflectionFunction $rf, bool &$usedThis = null, bool &$usedStatic = null, bool &$isStaticFunction = null, array &$useStatements = null): string
     {
         $hash = Reflect::getHash($rf);
         if (isset(self::$functionCache[$hash])) {
             $usedThis = self::$functionCache[$hash]['usedThis'];
             $usedStatic = self::$functionCache[$hash]['usedStatic'];
+            $useStatements = self::$functionCache[$hash]['useStatements'];
             return self::$functionCache[$hash]['code'];
         }
         $usedThis = null;
@@ -242,7 +255,19 @@ class ClosureTransformer implements TransformerInterface
         $capturedTokens = [];
         $stackDepth = 0;
         $stack = [];
+        $useStatements = [];
         foreach ($tokens as $idx => $token) {
+            if ($token->id === \T_NAMESPACE) {
+                $useStatements = [];
+            }
+            if ($token->id === \T_STRING || $token->id === \T_NAME_QUALIFIED || $token->id === \T_NAME_FULLY_QUALIFIED) {                
+                if ($tokens[$idx - 2]->id === \T_USE) {
+                    $useStatements[] = self::extractStatement($tokens, $idx - 2);
+                } elseif ($tokens[$idx - 2]->id === \T_FUNCTION && $tokens[$idx - 4]->id === \T_USE) {
+                    $useStatements[] = self::extractStatement($tokens, $idx - 4);
+                }
+                
+            }
             if (!$capture) {
                 if ($token->line === $rf->getStartLine()) {
                     if ($token->id === \T_STATIC && $tokens[$idx + 2]?->id === \T_FUNCTION) {
@@ -296,6 +321,7 @@ class ClosureTransformer implements TransformerInterface
             'code' => \implode('', $codes),
             'usedThis' => $usedThis,
             'usedStatic' => $usedStatic,
+            'useStatements' => $useStatements,
         ];
 
         return self::$functionCache[$hash]['code'];
@@ -332,5 +358,20 @@ class ClosureTransformer implements TransformerInterface
         }
 
         throw new RuntimeException("Token offset for line {$line} could not be found.");
+    }
+
+    private static function extractStatement(array &$tokens, int $startIndex): string {
+        $captured = [];
+        for (; $startIndex < count($tokens); $startIndex++) {
+            if ($tokens[$startIndex]->isIgnorable()) {
+                $captured[] = ' ';
+            } else {
+                $captured[] = $tokens[$startIndex]->text;
+            }
+            if ($tokens[$startIndex]->text === ";") {
+                break;
+            }
+        }
+        return implode("", $captured);
     }
 }

@@ -16,7 +16,6 @@ test('generates a secret hash on windows machines', function (): void {
 
     expect($actual)->not()->toBeNull();
 })
-    ->coversClass(WindowsSecretGenerator::class)
     ->skip(fn(): bool => PHP_OS_FAMILY !== 'Windows', 'This test is skipped on [' . PHP_OS_FAMILY . '].');
 
 test('throws an exception if secret hash could not be generated', function (): void {
@@ -25,5 +24,4 @@ test('throws an exception if secret hash could not be generated', function (): v
     $secretGenerator->generate();
 })
     ->throws(SecretGenerationException::class)
-    ->coversClass(WindowsSecretGenerator::class)
     ->skip(fn(): bool => PHP_OS_FAMILY === 'Windows', 'This test is skipped on [Windows].');

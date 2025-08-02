@@ -8,108 +8,13 @@ use Closure;
 use ReflectionClass;
 use Serializor;
 use stdClass;
-
-class ObjTyped
-{
-    public function __construct(
-        public readonly Closure $closure,
-        public readonly ?ObjTyped $objTyped
-    ) {}
-}
-
-class ObjSelf
-{
-    public $o;
-}
-
-class ObjTypedUninit
-{
-    public Closure $value;
-    public readonly Closure $c;
-    public function __construct()
-    {
-        $this->c = function () {};
-    }
-}
-
-class ObjWithConst
-{
-    const FOO = 'bar';
-}
-
-class A
-{
-    protected static function aStaticProtected()
-    {
-        return 'static protected called';
-    }
-
-    protected function aProtected()
-    {
-        return 'protected called';
-    }
-
-    public function aPublic()
-    {
-        return 'public called';
-    }
-}
-
-class A2
-{
-    private $phrase = 'Hello, World!';
-
-    private $closure1;
-
-    private $closure2;
-
-    private $closure3;
-
-    public function __construct()
-    {
-        $this->closure1 = function () {
-            return $this->phrase;
-        };
-        $this->closure2 = function () {
-            return $this;
-        };
-        $this->closure3 = function () {
-            $c = $this->closure2;
-
-            return $this === $c();
-        };
-    }
-
-    public function getPhrase()
-    {
-        $c = $this->closure1;
-
-        return $c();
-    }
-
-    public function getEquality()
-    {
-        $c = $this->closure3;
-
-        return $c();
-    }
-}
-
-class A3
-{
-    private $closure;
-
-    public function __construct($closure)
-    {
-        $this->closure = $closure;
-    }
-
-    public function hello()
-    {
-        return ($this->closure)();
-    }
-}
-
+use Tests\Fixtures\A;
+use Tests\Fixtures\A3;
+use Tests\Fixtures\ObjSelf;
+use Tests\Fixtures\ObjTyped;
+use Tests\Fixtures\ObjTypedUninit;
+use Tests\Fixtures\ObjWithConst;
+use Tests\Fixtures\Util;
 
 test('non-static closure with simple const', function () {
     $c = function () {
@@ -136,7 +41,7 @@ test('closure use return value', function () {
         return $a;
     };
 
-    $u = s($c);
+    $u = Util::s($c);
 
     expect($a)->toEqual($u());
 });
@@ -150,7 +55,7 @@ test('closure use return closure', function () {
     };
 
     $v = 1;
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u(1))->toEqual($v + 1);
 });
@@ -163,7 +68,7 @@ test('closure use return closure by ref', function () {
     };
 
     $v = 1;
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u(1))->toEqual($v + 1);
 });
@@ -172,7 +77,7 @@ test('closure use self', function () {
     $a = function () use (&$a) {
         return $a;
     };
-    $u = s($a);
+    $u = Util::s($a);
 
     expect($u())->toEqual($u);
 });
@@ -186,7 +91,7 @@ test('closure use self in array', function () {
 
     $a[] = $b;
 
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u())->toEqual($u);
 });
@@ -199,7 +104,7 @@ test('closure use self in object', function () {
 
     $a->me = $b;
 
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u())->toEqual($u);
 });
@@ -222,7 +127,7 @@ test('closure use self in multi array', function () {
     $a[] = $c;
     $x = $c;
 
-    $u = s($c);
+    $u = Util::s($c);
 
     expect($u(0))->toEqual($u);
 });
@@ -233,7 +138,7 @@ test('closure use self in instance', function () {
         return $c === $i->o;
     };
     $i->o = $c;
-    $u = s($c);
+    $u = Util::s($c);
     expect($u($u))->toBeTrue();
 });
 
@@ -243,7 +148,7 @@ test('closure use self in instance2', function () {
         return $c == $i->o;
     };
     $i->o = &$c;
-    $u = s($c);
+    $u = Util::s($c);
     expect($u())->toBeTrue();
 });
 test('closure serialization twice', function () {
@@ -255,7 +160,7 @@ test('closure serialization twice', function () {
         return $a($p);
     };
 
-    $u = s(s($b));
+    $u = Util::s(Util::s($b));
 
     expect($u('ok'))->toEqual('ok');
 });
@@ -265,7 +170,7 @@ test('closure real serialization', function () {
         return $a + $b;
     };
 
-    $u = s(s($f));
+    $u = Util::s(Util::s($f));
     expect($u(2, 3))->toEqual(5);
 });
 test('closure nested', function () {
@@ -279,12 +184,12 @@ test('closure nested', function () {
             return ! $b;
         };
 
-        $ns = s($n);
+        $ns = Util::s($n);
 
         return $ns(false);
     };
 
-    $os = s($o);
+    $os = Util::s($o);
 
     expect($os(true))->toEqual(true);
 });
@@ -296,7 +201,7 @@ test('closure curly syntax', function () {
 
         return $x->{'a'} + $x->{$b};
     };
-    $f = s($f);
+    $f = Util::s($f);
     expect($f())->toEqual(4);
 });
 
@@ -307,9 +212,9 @@ test('closure bind to object', function () {
         return $this->aPublic();
     };
 
-    $b = $b->bindTo($a, __NAMESPACE__ . '\\A');
+    $b = $b->bindTo($a, A::class);
 
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u())->toEqual('public called');
 });
@@ -321,9 +226,9 @@ test('closure bind to object scope', function () {
         return $this->aProtected();
     };
 
-    $b = $b->bindTo($a, __NAMESPACE__ . '\\A');
+    $b = $b->bindTo($a, A::class);
 
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u())->toEqual('protected called');
 });
@@ -334,9 +239,9 @@ test('closure bind to object static scope', function () {
         return static::aStaticProtected();
     };
 
-    $b = $b->bindTo(null, __NAMESPACE__ . '\\A');
+    $b = $b->bindTo(null, A::class);
 
-    $u = s($b);
+    $u = Util::s($b);
 
     expect($u())->toEqual('static protected called');
 });
@@ -349,7 +254,7 @@ test('mixed encodings', function () {
         return [$a, $b];
     };
 
-    $u = s($closure);
+    $u = Util::s($closure);
     $r = $u();
 
     expect($r[0])->toEqual($a);
@@ -367,7 +272,7 @@ test('rebound closure', function () {
         A3::class
     );
 
-    $u = s($closure);
+    $u = Util::s($closure);
     $r = $u();
 
     expect($r)->toEqual('Hi');
@@ -381,7 +286,7 @@ test('complex recursion', function () {
         return $a;
     };
     $a[] = &$a;
-    $nv = s(function () use (&$b, &$a) {
+    $nv = Util::s(function () use (&$b, &$a) {
         $res = $b();
         expect($res[0])->toBe($a[0]);
     });
@@ -394,7 +299,7 @@ test('recursion maintained', function () {
     $a1 = [&$v, &$v, $v, function & () use (&$a1) {
         return $a1;
     }];
-    $a2 = s($a1[3])();
+    $a2 = Util::s($a1[3])();
     expect($a2[0])->toBe($a2[1]);
     expect($a2[0] === $a2[2])->toBeTrue();
     $a2[0] = 'World';
@@ -408,13 +313,13 @@ test('complex typed object', function () {
     $o2 = new ObjTyped(function () use ($o) {
         return $o;
     }, $o);
-    $o3 = s($o2);
+    $o3 = Util::s($o2);
     expect(($o3->closure)())->toBe($o3->objTyped);
 });
 
 test('object with uninitialized property', function () {
     $o = new ObjTypedUninit();
-    $o2 = s($o);
+    $o2 = Util::s($o);
     $rc = new ReflectionClass($o);
     $rp = $rc->getProperty('value');
     expect($rp->isInitialized($o2))->toBeFalse();
