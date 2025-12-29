@@ -46,6 +46,10 @@ Test files:
 
 ## Code Style
 
-- PHP 8.1+ with strict types
+- PHP 8.2+ with strict types
 - No over-engineering - keep solutions minimal
 - Prefer explicit errors over silent incorrect behavior
+
+## Use github cli
+
+Use github cli to check for issues, pull requests and such every time a new session is started. Keep composer.json up to date with respect to dependencies and supported PHP version; we support all PHP versions that are not end of life according to www.php.net/supported-versions.php.
