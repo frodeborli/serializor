@@ -85,7 +85,9 @@ final class ObjectStasis extends Stasis
         $newInstance = $rc->newInstanceWithoutConstructor();
 
         if (\method_exists($newInstance, '__unserialize')) {
-            $newInstance->__unserialize($this->p);
+            // Some internal classes (like ArrayObject) don't accept references in their data.
+            // Create a dereferenced copy to avoid PHP's internal reference markers.
+            $newInstance->__unserialize($this->deref($this->p));
             $this->setInstance($newInstance);
 
             return $newInstance;
@@ -151,5 +153,18 @@ final class ObjectStasis extends Stasis
         }
 
         return $newInstance;
+    }
+
+    /**
+     * Create a copy of an array with all PHP references removed.
+     * This is necessary for internal classes like ArrayObject that don't accept references.
+     */
+    private function deref(array $arr): array
+    {
+        $result = [];
+        foreach ($arr as $k => $v) {
+            $result[$k] = \is_array($v) ? $this->deref($v) : $v;
+        }
+        return $result;
     }
 }
