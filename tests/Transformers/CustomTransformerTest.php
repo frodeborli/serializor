@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Tests\Transformers;
 
 use Serializor\Codec;
+use Serializor\ObjectStasis;
 use Serializor\Stasis;
-use Serializor\TransformerInterface;
 
 /**
- * Tests for custom transformer patterns.
+ * Tests for custom Stasis factory patterns.
  *
  * Demonstrates the PDO-like placeholder pattern: objects that hold resources
  * (like database connections) can be serialized as placeholders and recreated
@@ -68,52 +68,58 @@ class FakePDO
 }
 
 /**
- * Custom transformer that handles FakePDO serialization.
- *
- * Instead of trying to serialize the connection, it stores the connection
- * parameters and recreates the connection during unserialization.
+ * Custom Stasis subclass for FakePDO that stores connection parameters
+ * and recreates the connection during unserialization.
  */
-class FakePDOTransformer implements TransformerInterface
+final class FakePDOStasis extends Stasis
 {
-    public function transforms(mixed $value): bool
+    private string $dsn;
+    private string $username;
+    private string $password;
+
+    private function __construct() {}
+
+    public function __serialize(): array
     {
-        return $value instanceof FakePDO;
+        return [
+            'd' => $this->dsn,
+            'u' => $this->username,
+            'p' => $this->password,
+        ];
     }
 
-    public function resolves(Stasis $value): bool
+    public function __unserialize(array $data): void
     {
-        return $value->getClassName() === FakePDO::class;
+        $this->dsn = $data['d'];
+        $this->username = $data['u'];
+        $this->password = $data['p'];
     }
 
-    public function transform(mixed $value): mixed
+    public function getClassName(): string
     {
-        if (!($value instanceof FakePDO)) {
-            return false;
-        }
+        return FakePDO::class;
+    }
 
-        $frozen = new Stasis(FakePDO::class);
-        // Store only what we need to recreate the connection
-        $frozen->p['dsn'] = $value->getDsn();
-        $frozen->p['username'] = $value->getUsername();
+    public static function fromFakePDO(FakePDO $pdo): FakePDOStasis
+    {
+        $stasis = new FakePDOStasis();
+        $stasis->dsn = $pdo->getDsn();
+        $stasis->username = $pdo->getUsername();
         // In real usage, password might be retrieved from a secure store
-        // on the receiving end rather than serialized
-        $frozen->p['password'] = 'reconnect-password';
-
-        return $frozen;
+        $stasis->password = 'reconnect-password';
+        return $stasis;
     }
 
-    public function resolve(mixed $value): mixed
+    public function &getInstance(): mixed
     {
-        if (!($value instanceof Stasis) || $value->getClassName() !== FakePDO::class) {
-            return false;
+        if ($this->hasInstance()) {
+            return $this->getCachedInstance();
         }
 
         // Create a new connection on the receiving end
-        return new FakePDO(
-            $value->p['dsn'],
-            $value->p['username'],
-            $value->p['password']
-        );
+        $result = new FakePDO($this->dsn, $this->username, $this->password);
+        $this->setInstance($result);
+        return $result;
     }
 }
 
@@ -147,17 +153,22 @@ class DatabaseService
     }
 }
 
+// Register the custom factory for FakePDO
+Stasis::registerFactory(FakePDO::class, function (object $value): ?Stasis {
+    if (!($value instanceof FakePDO)) {
+        return null;
+    }
+    return FakePDOStasis::fromFakePDO($value);
+});
+
 // ============================================================================
-// CUSTOM TRANSFORMER TESTS
+// CUSTOM STASIS FACTORY TESTS
 // ============================================================================
 
-test('custom transformer handles FakePDO serialization', function () {
+test('custom Stasis factory handles FakePDO serialization', function () {
     $pdo = new FakePDO('sqlite::memory:', 'user', 'pass');
 
-    $codec = new Codec('secret', [
-        new FakePDOTransformer(),
-        ...(\Serializor::getDefaultTransformers()),
-    ]);
+    $codec = new Codec();
 
     $serialized = $codec->serialize($pdo);
     $restored = $codec->unserialize($serialized);
@@ -168,14 +179,11 @@ test('custom transformer handles FakePDO serialization', function () {
     expect($restored->getUsername())->toBe('user');
 });
 
-test('custom transformer in nested object structure', function () {
+test('custom Stasis factory in nested object structure', function () {
     $pdo = new FakePDO('mysql:host=localhost', 'admin', 'secret');
     $service = new DatabaseService($pdo, 'users');
 
-    $codec = new Codec('secret', [
-        new FakePDOTransformer(),
-        ...(\Serializor::getDefaultTransformers()),
-    ]);
+    $codec = new Codec();
 
     $serialized = $codec->serialize($service);
     $restored = $codec->unserialize($serialized);
@@ -186,17 +194,14 @@ test('custom transformer in nested object structure', function () {
     expect($restored->query('SELECT * FROM users'))->toBe(['executed' => 'SELECT * FROM users']);
 });
 
-test('custom transformer with closure capturing resource-like object', function () {
+test('custom Stasis factory with closure capturing resource-like object', function () {
     $pdo = new FakePDO('pgsql:host=127.0.0.1', 'postgres', 'pg_pass');
 
     $closure = function (string $table) use ($pdo) {
         return $pdo->query("SELECT * FROM {$table}");
     };
 
-    $codec = new Codec('secret', [
-        new FakePDOTransformer(),
-        ...(\Serializor::getDefaultTransformers()),
-    ]);
+    $codec = new Codec();
 
     $serialized = $codec->serialize($closure);
     $restored = $codec->unserialize($serialized);
@@ -215,36 +220,15 @@ test('same FakePDO instance shared across multiple paths', function () {
         'direct' => $pdo,
     ];
 
-    $codec = new Codec('secret', [
-        new FakePDOTransformer(),
-        ...(\Serializor::getDefaultTransformers()),
-    ]);
+    $codec = new Codec();
 
     $serialized = $codec->serialize($data);
     $restored = $codec->unserialize($serialized);
 
     // All references should point to the same recreated instance
-    // (though it's a new connection, the object identity is preserved)
     expect($restored['service1']->isConnected())->toBeTrue();
     expect($restored['service2']->isConnected())->toBeTrue();
     expect($restored['direct']->isConnected())->toBeTrue();
-});
-
-test('custom transformer registered after default transformers', function () {
-    // Transformers are checked in order, so custom ones should come first
-    // if they need to override default behavior
-    $pdo = new FakePDO('oracle:dbname=xe', 'system', 'oracle');
-
-    // Put custom transformer first
-    $codec = new Codec('secret', [
-        new FakePDOTransformer(),
-        ...(\Serializor::getDefaultTransformers()),
-    ]);
-
-    $serialized = $codec->serialize($pdo);
-    $restored = $codec->unserialize($serialized);
-
-    expect($restored->getDsn())->toBe('oracle:dbname=xe');
 });
 
 test('array of FakePDO connections', function () {
@@ -253,10 +237,7 @@ test('array of FakePDO connections', function () {
         'replica' => new FakePDO('mysql:host=replica', 'user', 'pass'),
     ];
 
-    $codec = new Codec('secret', [
-        new FakePDOTransformer(),
-        ...(\Serializor::getDefaultTransformers()),
-    ]);
+    $codec = new Codec();
 
     $serialized = $codec->serialize($connections);
     $restored = $codec->unserialize($serialized);

@@ -4,15 +4,9 @@ declare(strict_types=1);
 
 namespace Serializor;
 
-use Closure;
 use Serializor\Codec;
 use Serializor\SecretGenerators\SecretGenerationException;
 use Serializor\SecretGenerators\SecretGeneratorFactory;
-use Serializor\Transformers\AnonymousClassTransformer;
-use Serializor\Transformers\ClosureTransformer;
-use Serializor\Transformers\SplObjectStorageTransformer;
-use Serializor\Transformers\WeakMapTransformer;
-use Serializor\Transformers\WeakReferenceTransformer;
 
 /**
  * Serializor class responsible for serializing and deserializing data,
@@ -24,31 +18,17 @@ class Serializor
 {
     /**
      * Singleton instance for the default Serializor codec.
-     *
-     * This is used by static methods such as:
-     * - {@see Serializor::serialize()}
-     * - {@see Serializor::unserialize()}
      */
     private static ?Codec $singleton = null;
 
     /** @var string|null The default secret key used for serialization security */
     private static ?string $defaultSecret = null;
 
-    /** @var array Default transformers for serializing closures and anonymous classes */
-    private static array $defaultTransformers = [];
-
-    /** @var Closure|null Custom function for transforming variables used in closures */
-    private static ?Closure $transformUseVarsFunc = null;
-
-    /** @var Closure|null Custom function for resolving variables used in closures */
-    private static ?Closure $resolveUseVarsFunc = null;
-
     /**
      * Serializes the given value using the default Serializor instance.
      * This method acts as a replacement for PHP's native `serialize()` function.
      *
      * @param mixed $value The value to be serialized
-     *
      * @return string The serialized string
      */
     public static function serialize(mixed $value): string
@@ -61,7 +41,6 @@ class Serializor
      * This method acts as a replacement for PHP's native `unserialize()` function.
      *
      * @param string $value The serialized string to be unserialized
-     *
      * @return mixed The unserialized value
      */
     public static function &unserialize(string $value): mixed
@@ -78,7 +57,7 @@ class Serializor
     public static function getInstance(): Codec
     {
         if (self::$singleton === null) {
-            self::$singleton = new Codec();
+            self::$singleton = new Codec(self::$defaultSecret ?? '');
         }
         return self::$singleton;
     }
@@ -92,59 +71,18 @@ class Serializor
     public static function setDefaultSecret(string $secret): void
     {
         self::$defaultSecret = $secret;
-        self::updateSingleton();
+        self::$singleton = null;
     }
 
     /**
-     * Sets a custom closure to transform variables used in closures.
+     * Register a custom factory for handling user-defined types.
      *
-     * @param Closure|null $transformUseVarsFunc The custom transformation function
+     * @param class-string $class The class name to handle
+     * @param callable(object): ?Stasis $factory Factory that returns a Stasis or null to skip
      */
-    public static function setTransformUseVarsFunc(?Closure $transformUseVarsFunc = null): void
+    public static function registerFactory(string $class, callable $factory): void
     {
-        self::$transformUseVarsFunc = $transformUseVarsFunc;
-        self::updateSingleton();
-    }
-
-    /**
-     * Sets a custom closure to resolve variables used in closures.
-     *
-     * @param Closure|null $resolveUseVarsFunc The custom resolution function
-     */
-    public static function setResolveUseVarsFunc(?Closure $resolveUseVarsFunc = null): void
-    {
-        self::$resolveUseVarsFunc = $resolveUseVarsFunc;
-        self::updateSingleton();
-    }
-
-    /**
-     * Returns the default set of transformers used for serializing closures
-     * and anonymous classes.
-     *
-     * @return array The default transformers
-     */
-    public static function getDefaultTransformers(): array
-    {
-        if (!empty(self::$defaultTransformers)) {
-            return self::$defaultTransformers;
-        }
-
-        return [
-            new ClosureTransformer(self::$transformUseVarsFunc, self::$resolveUseVarsFunc),
-            new AnonymousClassTransformer(),
-            new SplObjectStorageTransformer(),
-            new WeakMapTransformer(),
-            new WeakReferenceTransformer(),
-        ];
-    }
-
-    /**
-     * Updates the singleton Codec instance with the latest settings, such as
-     * the default secret key or custom variable transformation functions.
-     */
-    private static function updateSingleton(): void
-    {
-        self::$singleton = new Codec(self::$defaultSecret);
+        Stasis::registerFactory($class, $factory);
     }
 
     /**

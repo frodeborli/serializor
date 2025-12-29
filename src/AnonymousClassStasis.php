@@ -2,20 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Serializor\Transformers;
+namespace Serializor;
 
 use PhpToken;
+use ReflectionClass;
 use ReflectionObject;
-use Serializor\SerializerError;
-use Serializor\Stasis;
-use Serializor\TransformerInterface;
 
 /**
- * Provides serialization of anonymous classes for Serializor.
- *
- * @package Serializor
+ * Stasis for anonymous class instances.
+ * Extracts and stores the class definition source code.
  */
-class AnonymousClassTransformer implements TransformerInterface
+final class AnonymousClassStasis extends Stasis
 {
     private const STARTING = 0;
     private const CONSTRUCTOR_ARGS = 1;
@@ -26,56 +23,84 @@ class AnonymousClassTransformer implements TransformerInterface
     private const CLASS_CONSTRUCTOR_ARGS = 7;
     private const DONE = 255;
 
+    private string $hash;
+    private string $code;
+    private ?string $extends = null;
+    private array $implements = [];
+    private array $props = [];
+
     private static array $tokenCache = [];
     private static array $functionCache = [];
     private static array $classMakerCache = [];
 
-    public function transforms(mixed $value): bool
+    private function __construct() {}
+
+    public function __serialize(): array
     {
-        // Anonymous classes can have different prefixes:
-        // - "class@anonymous" for plain anonymous classes
-        // - "InterfaceName@anonymous" when implementing an interface
-        // - "ClassName@anonymous" when extending a class
-        return \is_object($value) && \str_contains(\get_class($value), '@anonymous');
+        $data = ['h' => $this->hash, 'c' => $this->code, 'p' => $this->props];
+        if ($this->extends !== null) {
+            $data['e'] = $this->extends;
+        }
+        if (!empty($this->implements)) {
+            $data['i'] = $this->implements;
+        }
+        return $data;
     }
 
-    public function resolves(Stasis $value): bool
+    public function __unserialize(array $data): void
     {
-        return $value->getClassName() == 'class@anonymous';
+        $this->hash = $data['h'];
+        $this->code = $data['c'];
+        $this->props = $data['p'];
+        $this->extends = $data['e'] ?? null;
+        $this->implements = $data['i'] ?? [];
     }
 
-    public function transform(mixed $value): mixed
+    public function getClassName(): string
     {
-        \assert($this->transforms($value), "Can't transform " . get_debug_type($value));
+        return 'class@anonymous';
+    }
+
+    public static function fromObject(object $value, ReflectionClass $rc): AnonymousClassStasis
+    {
         $ro = new ReflectionObject($value);
+        $frozen = new AnonymousClassStasis();
 
-        $frozen = new Stasis('class@anonymous');
-        $frozen->p['|hash'] = self::getClassHash($ro);
-        $frozen->p['|code'] = self::getCode($ro);
+        $frozen->hash = self::getClassHash($ro);
+        $frozen->code = self::getCode($ro);
         $parentRo = $ro->getParentClass();
-        $frozen->p['|extends'] = $parentRo ? $parentRo->getName() : null;
-        $frozen->p['|implements'] = $ro->getInterfaceNames();
-        $frozen->p['|props'] = Stasis::getObjectProperties($value);
+        $frozen->extends = $parentRo ? $parentRo->getName() : null;
+        $frozen->implements = $ro->getInterfaceNames();
+        $frozen->props = Stasis::getObjectProperties($value);
+
         return $frozen;
     }
 
-    public function resolve(mixed $value): mixed
+    /**
+     * Get the properties for transformation.
+     */
+    public function &getProps(): array
     {
-        \assert($value instanceof Stasis && $value->getClassName() === 'class@anonymous', "Can't resolve " . get_debug_type($value));
+        return $this->props;
+    }
 
-        $hash = $value->p['|hash'];
-
-        if (!isset(self::$classMakerCache[$hash])) {
-            $code = 'return static function() {
-                return new ' . $value->p['|code'] . ';
-            };';
-            self::$classMakerCache[$hash] = eval($code);
+    public function &getInstance(): mixed
+    {
+        if ($this->hasInstance()) {
+            return $this->getCachedInstance();
         }
 
-        $instance = self::$classMakerCache[$hash]();
+        if (!isset(self::$classMakerCache[$this->hash])) {
+            $code = 'return static function() {
+                return new ' . $this->code . ';
+            };';
+            self::$classMakerCache[$this->hash] = eval($code);
+        }
 
-        Stasis::setObjectProperties($instance, $value->p['|props']);
+        $instance = self::$classMakerCache[$this->hash]();
+        Stasis::setObjectProperties($instance, $this->props);
 
+        $this->setInstance($instance);
         return $instance;
     }
 
@@ -87,7 +112,6 @@ class AnonymousClassTransformer implements TransformerInterface
         }
         $sourceFile = $ro->getFileName();
         if (isset(self::$tokenCache[$sourceFile])) {
-            /** @var PhpToken[] */
             $tokens = self::$tokenCache[$sourceFile];
         } else {
             $tokens = self::$tokenCache[$sourceFile] = PhpToken::tokenize(file_get_contents($sourceFile));
@@ -112,8 +136,6 @@ class AnonymousClassTransformer implements TransformerInterface
                 }
             }
             if (!$token->isIgnorable()) {
-                // Only check for terminators after we've entered the class body
-                // Otherwise commas in "implements A, B" would cause early termination
                 if ($stackDepth === 0 && $state !== self::STARTING && $state !== self::BEFORE_BODY && \str_contains(",)}];", $token->text)) {
                     break;
                 }
@@ -124,13 +146,11 @@ class AnonymousClassTransformer implements TransformerInterface
                 $stateChangeToken = $token;
             } elseif ($state === self::CONSTRUCTOR_ARGS && $token->text === ')') {
                 $state = self::BEFORE_BODY;
-                // remove passed args
                 while ($capturedTokens[count($capturedTokens) - 1] !== $stateChangeToken) {
                     array_pop($capturedTokens);
                 }
                 $stateChangeToken = $token;
             } elseif ($state === self::STARTING && $token->text === '{') {
-                // Handle `new class { ... }` without constructor args
                 $state = self::BODY;
                 $stateChangeToken = $token;
             } elseif ($state === self::BEFORE_BODY && $token->text === '{') {
@@ -164,7 +184,6 @@ class AnonymousClassTransformer implements TransformerInterface
                             $topToken = array_pop($capturedTokens);
                             $tmpTokens[] = $topToken;
                             if ($topToken->text === '=') {
-                                // remove assignment
                                 $tmpTokens = [];
                                 $testWhitespace = array_pop($capturedTokens);
                                 if (!$testWhitespace->isIgnorable()) {
@@ -195,7 +214,6 @@ class AnonymousClassTransformer implements TransformerInterface
 
             if ($state === self::BODY && $memberNameToken !== null) {
                 if (in_array($memberNameToken->text, $discardMembers)) {
-                    // discard this member
                     while ($capturedTokens !== [] && array_pop($capturedTokens) !== $stateChangeToken) {
                     }
                 }
