@@ -1417,3 +1417,105 @@ test('closure using constant from interface', function (): void {
 
     expect($result())->toBe(\DateTimeInterface::ATOM);
 });
+
+// ============================================================================
+// ISSUE #12: Unreliable code extraction edge cases
+// https://github.com/frodeborli/serializor/issues/12
+// ============================================================================
+
+test('issue 12: function surrounded by other functions on same line (distinguishable)', function (): void {
+    $notThisOne = function ($a) { return 'first'; }; $thisOne = function ($b) { return 'second'; }; $notThisEither = function ($c) { return 'third'; };
+
+    $result = Util::s($thisOne);
+
+    expect($result('x'))->toBe('second');
+});
+
+test('issue 12: arrow function surrounded by other functions on same line (distinguishable)', function (): void {
+    $notThisOne = function ($a) { return 'first'; }; $thisOne = fn($b) => 'second'; $notThisEither = function ($c) { return 'third'; };
+
+    $result = Util::s($thisOne);
+
+    expect($result('x'))->toBe('second');
+});
+
+test('issue 12: static function surrounded by other functions on same line (distinguishable)', function (): void {
+    $notThisOne = function ($a) { return 'first'; }; $thisOne = static function ($b) { return 'second'; }; $notThisEither = function ($c) { return 'third'; };
+
+    $result = Util::s($thisOne);
+
+    expect($result('x'))->toBe('second');
+});
+
+test('issue 12: static arrow function surrounded by other functions on same line (distinguishable)', function (): void {
+    $notThisOne = function ($a) { return 'first'; }; $thisOne = static fn($b) => 'second'; $notThisEither = function ($c) { return 'third'; };
+
+    $result = Util::s($thisOne);
+
+    expect($result('x'))->toBe('second');
+});
+
+test('issue 12: static function with comment between static and function', function (): void {
+    $fn = static /* this is a comment */ function ($x): string {
+        return 'value: ' . $x;
+    };
+
+    $result = Util::s($fn);
+
+    expect($result('test'))->toBe('value: test');
+});
+
+test('issue 12: static arrow function with comment between static and fn', function (): void {
+    $fn = static /* this is a comment */ fn($x) => 'value: ' . $x;
+
+    $result = Util::s($fn);
+
+    expect($result('test'))->toBe('value: test');
+});
+
+test('issue 12: static on different line than function', function (): void {
+    $fn = static
+    function ($x): string {
+        return 'value: ' . $x;
+    };
+
+    $result = Util::s($fn);
+
+    expect($result('test'))->toBe('value: test');
+});
+
+test('issue 12: static on different line than fn', function (): void {
+    $fn = static
+    fn($x) => 'value: ' . $x;
+
+    $result = Util::s($fn);
+
+    expect($result('test'))->toBe('value: test');
+});
+
+test('issue 12: indistinguishable functions on same line throws exception', function (): void {
+    // This should throw because both closures have same param name
+    $first = function ($x) { return 1; }; $second = function ($x) { return 2; };
+
+    expect(fn() => Util::s($first))->toThrow(\Serializor\SerializerError::class);
+});
+
+test('issue 12: static with multiple whitespace tokens before function', function (): void {
+    $fn = static     function ($x): int {
+        return $x * 2;
+    };
+
+    $result = Util::s($fn);
+
+    expect($result(5))->toBe(10);
+});
+
+test('issue 12: static with newline and comment before fn', function (): void {
+    $fn = static
+    // a comment here
+    fn($x) => $x * 3;
+
+    $result = Util::s($fn);
+
+    expect($result(4))->toBe(12);
+});

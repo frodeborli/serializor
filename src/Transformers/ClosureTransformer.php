@@ -315,9 +315,21 @@ class ClosureTransformer implements TransformerInterface
                     if ($targetStartIdx !== null && $idx !== $targetStartIdx) {
                         continue;
                     }
-                    if ($token->id === \T_STATIC && $tokens[$idx + 2]?->id === \T_FUNCTION) {
-                        $capture = true;
-                        $isStaticFunction = true;
+                    if ($token->id === \T_STATIC) {
+                        // Check for static function/fn - skip ignorable tokens to find the next keyword
+                        $nextNonIgnorable = $idx + 1;
+                        while ($nextNonIgnorable < count($tokens) && $tokens[$nextNonIgnorable]->isIgnorable()) {
+                            $nextNonIgnorable++;
+                        }
+                        if ($nextNonIgnorable < count($tokens) && $tokens[$nextNonIgnorable]->id === \T_FUNCTION) {
+                            $capture = true;
+                            $isStaticFunction = true;
+                        } elseif ($nextNonIgnorable < count($tokens) && $tokens[$nextNonIgnorable]->id === \T_FN) {
+                            $capture = true;
+                            $isStaticFunction = true;
+                        } else {
+                            continue;
+                        }
                     } elseif ($token->id === T_FUNCTION || $token->id === \T_FN) {
                         $capture = true;
                     } else {
