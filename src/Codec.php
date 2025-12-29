@@ -107,11 +107,19 @@ class Codec
             $this->stronglyReferenced = [];
             $this->inWeakContext = false;
             $result = \serialize($value);
-        } catch (Throwable $e) {
+        } catch (Throwable) {
             $v = [&$value];
-            $result = $this->transform($v, [], null);
+            $transformed = $this->transform($v, [], null);
             $this->markDeadWeakReferences();
-            $result = \serialize(new Box($result, $this->shortcuts));
+            // Skip Box wrapper if result is a single simple Stasis
+            $canSkipBox = $transformed[0] instanceof Stasis
+                && \count($this->shortcuts) === 1
+                && $transformed[0]->isSimple();
+            if ($canSkipBox) {
+                $result = \serialize($transformed[0]);
+            } else {
+                $result = \serialize(new Box($transformed, $this->shortcuts));
+            }
         } finally {
             $this->referenceSources = [];
             $this->referenceTargets = [];

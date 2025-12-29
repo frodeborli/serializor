@@ -79,6 +79,14 @@ final class ClosureStasis extends Stasis
     }
 
     /**
+     * Simple if no captured variables or bound $this.
+     */
+    public function isSimple(): bool
+    {
+        return empty($this->use) && $this->this === null;
+    }
+
+    /**
      * Get the use variables for transformation.
      */
     public function &getUse(): array

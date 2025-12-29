@@ -114,6 +114,15 @@ abstract class Stasis
     abstract public function getClassName(): string;
 
     /**
+     * Check if this Stasis can be serialized without Box wrapper.
+     * Override in subclasses that support standalone serialization.
+     */
+    public function isSimple(): bool
+    {
+        return false;
+    }
+
+    /**
      * Add a callback to be invoked when this Stasis is resolved.
      */
     public function whenResolved(Closure $listener): void

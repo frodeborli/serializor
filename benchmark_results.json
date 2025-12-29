@@ -2,7 +2,7 @@
     "meta": {
         "php_version": "8.5.1",
         "os": "Linux",
-        "date": "2025-12-29 19:49:58",
+        "date": "2025-12-29 20:09:18",
         "versions": {
             "serializor": "v2.0.0-RC1",
             "opis": "4.4.0",
@@ -12,125 +12,125 @@
     "results": {
         "serializor": {
             "simple_closure": {
-                "serialize_time": 42.16885566711426,
-                "unserialize_time": 28.768062591552734,
+                "serialize_time": 35.714149475097656,
+                "unserialize_time": 18.513917922973633,
                 "iterations": 500
             },
             "closure_with_use": {
-                "serialize_time": 49.27992820739746,
-                "unserialize_time": 49.10898208618164,
+                "serialize_time": 43.62201690673828,
+                "unserialize_time": 42.94300079345703,
                 "iterations": 500
             },
             "closure_with_multiple_captures": {
-                "serialize_time": 54.646968841552734,
-                "unserialize_time": 50.64105987548828,
+                "serialize_time": 48.73514175415039,
+                "unserialize_time": 44.946908950805664,
                 "iterations": 500
             },
             "closure_with_object": {
-                "serialize_time": 56.77604675292969,
-                "unserialize_time": 50.36282539367676,
+                "serialize_time": 49.603939056396484,
+                "unserialize_time": 43.55001449584961,
                 "iterations": 500
             },
             "closure_with_nested_closures": {
-                "serialize_time": 90.97099304199219,
-                "unserialize_time": 85.14285087585449,
+                "serialize_time": 82.31496810913086,
+                "unserialize_time": 73.48394393920898,
                 "iterations": 500
             },
             "named_function": {
-                "serialize_time": 3.0221939086914062,
-                "unserialize_time": 3.7178993225097656,
+                "serialize_time": 2.173185348510742,
+                "unserialize_time": 2.780914306640625,
                 "iterations": 500
             },
             "static_method": {
-                "serialize_time": 3.0701160430908203,
-                "unserialize_time": 4.137992858886719,
+                "serialize_time": 2.4170875549316406,
+                "unserialize_time": 2.9380321502685547,
                 "iterations": 500
             },
             "instance_method": {
-                "serialize_time": 18.584012985229492,
-                "unserialize_time": 7.8887939453125,
+                "serialize_time": 15.491962432861328,
+                "unserialize_time": 6.124019622802734,
                 "iterations": 500
             }
         },
         "opis": {
             "simple_closure": {
-                "serialize_time": 40.64488410949707,
-                "unserialize_time": 46.012163162231445,
+                "serialize_time": 36.026954650878906,
+                "unserialize_time": 40.474891662597656,
                 "iterations": 500
             },
             "closure_with_use": {
-                "serialize_time": 54.00896072387695,
-                "unserialize_time": 52.644968032836914,
+                "serialize_time": 48.47407341003418,
+                "unserialize_time": 45.41516304016113,
                 "iterations": 500
             },
             "closure_with_multiple_captures": {
-                "serialize_time": 64.08500671386719,
-                "unserialize_time": 53.38406562805176,
+                "serialize_time": 59.86905097961426,
+                "unserialize_time": 46.48089408874512,
                 "iterations": 500
             },
             "closure_with_object": {
-                "serialize_time": 71.35987281799316,
-                "unserialize_time": 57.66010284423828,
+                "serialize_time": 63.21907043457031,
+                "unserialize_time": 49.932003021240234,
                 "iterations": 500
             },
             "closure_with_nested_closures": {
-                "serialize_time": 122.88880348205566,
-                "unserialize_time": 100.37398338317871,
+                "serialize_time": 113.18707466125488,
+                "unserialize_time": 85.9379768371582,
                 "iterations": 500
             },
             "named_function": {
-                "serialize_time": 5.011081695556641,
-                "unserialize_time": 7.913112640380859,
+                "serialize_time": 3.921985626220703,
+                "unserialize_time": 4.241943359375,
                 "iterations": 500
             },
             "static_method": {
-                "serialize_time": 6.559848785400391,
-                "unserialize_time": 6.040096282958984,
+                "serialize_time": 5.160093307495117,
+                "unserialize_time": 4.642963409423828,
                 "iterations": 500
             },
             "instance_method": {
-                "serialize_time": 20.648956298828125,
-                "unserialize_time": 13.777971267700195,
+                "serialize_time": 17.78101921081543,
+                "unserialize_time": 11.382102966308594,
                 "iterations": 500
             }
         },
         "laravel": {
             "simple_closure": {
-                "serialize_time": 32.02390670776367,
-                "unserialize_time": 18.208980560302734,
+                "serialize_time": 28.907060623168945,
+                "unserialize_time": 14.745950698852539,
                 "iterations": 500
             },
             "closure_with_use": {
-                "serialize_time": 44.19994354248047,
-                "unserialize_time": 22.628068923950195,
+                "serialize_time": 40.110111236572266,
+                "unserialize_time": 18.50295066833496,
                 "iterations": 500
             },
             "closure_with_multiple_captures": {
-                "serialize_time": 58.25304985046387,
-                "unserialize_time": 23.855924606323242,
+                "serialize_time": 53.04408073425293,
+                "unserialize_time": 19.65188980102539,
                 "iterations": 500
             },
             "closure_with_object": {
-                "serialize_time": 54.51679229736328,
-                "unserialize_time": 26.39484405517578,
+                "serialize_time": 50.41694641113281,
+                "unserialize_time": 22.468090057373047,
                 "iterations": 500
             },
             "closure_with_nested_closures": {
-                "serialize_time": 114.82095718383789,
-                "unserialize_time": 46.04506492614746,
+                "serialize_time": 107.82384872436523,
+                "unserialize_time": 40.229082107543945,
                 "iterations": 500
             },
             "named_function": {
                 "error": "Call to a member function bindTo() on null"
             },
             "static_method": {
-                "serialize_time": 78.74608039855957,
-                "unserialize_time": 21.55590057373047,
+                "serialize_time": 70.84488868713379,
+                "unserialize_time": 18.402099609375,
                 "iterations": 500
             },
             "instance_method": {
-                "serialize_time": 82.44609832763672,
-                "unserialize_time": 23.28801155090332,
+                "serialize_time": 75.92511177062988,
+                "unserialize_time": 20.179033279418945,
                 "iterations": 500
             }
         }
