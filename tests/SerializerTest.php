@@ -14,6 +14,7 @@ use Tests\Fixtures\ObjSelf;
 use Tests\Fixtures\ObjTyped;
 use Tests\Fixtures\ObjTypedUninit;
 use Tests\Fixtures\ObjWithConst;
+use Tests\Fixtures\ObjectWithSerialize;
 use Tests\Fixtures\Util;
 
 test('non-static closure with simple const', function () {
@@ -323,4 +324,13 @@ test('object with uninitialized property', function () {
     $rc = new ReflectionClass($o);
     $rp = $rc->getProperty('value');
     expect($rp->isInitialized($o2))->toBeFalse();
+});
+
+test('object with __serialize/__unserialize containing closure', function () {
+    $multiplier = 3;
+    $obj = new ObjectWithSerialize('Test', fn($x) => str_repeat($x, $multiplier));
+
+    $restored = Util::s($obj);
+
+    expect($restored->run())->toBe('TestTestTest');
 });

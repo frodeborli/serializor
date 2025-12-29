@@ -153,3 +153,39 @@ test('anonymous class with readonly property', function (): void {
 
     expect($result->value)->toBe('readonly-value');
 });
+
+// ============================================================================
+// SAME-LINE ANONYMOUS CLASS DISAMBIGUATION
+// ============================================================================
+
+test('same-line anonymous classes with different implements can be disambiguated', function (): void {
+    $first = new class implements \Stringable { public function __toString(): string { return 'first'; } }; $second = new class implements \Countable { public function count(): int { return 42; } };
+
+    $resultFirst = Util::s($first);
+    $resultSecond = Util::s($second);
+
+    expect($resultFirst)->toBeInstanceOf(\Stringable::class);
+    expect((string) $resultFirst)->toBe('first');
+    expect($resultSecond)->toBeInstanceOf(\Countable::class);
+    expect(count($resultSecond))->toBe(42);
+});
+
+test('same-line anonymous classes with different extends can be disambiguated', function (): void {
+    $first = new class extends \Tests\Fixtures\A { public function getValue(): string { return 'from-A'; } }; $second = new class extends \Tests\Fixtures\RegularClass { public function getValue(): string { return 'from-Regular'; } };
+
+    $resultFirst = Util::s($first);
+    $resultSecond = Util::s($second);
+
+    expect($resultFirst)->toBeInstanceOf(\Tests\Fixtures\A::class);
+    expect($resultFirst->getValue())->toBe('from-A');
+    expect($resultSecond)->toBeInstanceOf(\Tests\Fixtures\RegularClass::class);
+    expect($resultSecond->getValue())->toBe('from-Regular');
+});
+
+test('same-line anonymous classes that cannot be disambiguated throws error', function (): void {
+    // Two identical anonymous classes on same line - cannot disambiguate
+    $first = new class { public string $v = 'a'; }; $second = new class { public string $v = 'b'; };
+
+    // Should throw for the second one (first one matches first class found)
+    Util::s($second);
+})->throws(\Serializor\SerializerError::class, 'cannot be disambiguated');
