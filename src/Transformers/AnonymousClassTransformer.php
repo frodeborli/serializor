@@ -32,7 +32,11 @@ class AnonymousClassTransformer implements TransformerInterface
 
     public function transforms(mixed $value): bool
     {
-        return \is_object($value) && \str_starts_with(\get_class($value), 'class@anonymous');
+        // Anonymous classes can have different prefixes:
+        // - "class@anonymous" for plain anonymous classes
+        // - "InterfaceName@anonymous" when implementing an interface
+        // - "ClassName@anonymous" when extending a class
+        return \is_object($value) && \str_contains(\get_class($value), '@anonymous');
     }
 
     public function resolves(Stasis $value): bool
@@ -113,7 +117,9 @@ class AnonymousClassTransformer implements TransformerInterface
                 }
             }
             if (!$token->isIgnorable()) {
-                if ($stackDepth === 0 && \str_contains(",)}];", $token->text)) {
+                // Only check for terminators after we've entered the class body
+                // Otherwise commas in "implements A, B" would cause early termination
+                if ($stackDepth === 0 && $state !== self::STARTING && $state !== self::BEFORE_BODY && \str_contains(",)}];", $token->text)) {
                     break;
                 }
             }
