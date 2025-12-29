@@ -22,7 +22,7 @@ Key features:
 - supports SPL classes (ArrayObject, SplObjectStorage, SplDoublyLinkedList, etc.)
 - supports DateTime classes
 - extensible via custom transformers
-- [cryptographically signed data](#security) for cross-machine serialization
+- optional [HMAC signing](#security) for secure cross-machine serialization
 - does not rely on PHP extensions (no FFI or similar dependencies)
 - supports PHP 8.2 - 8.5
 
@@ -92,9 +92,7 @@ composer require frodeborli/serializor
 
 ## Security
 
-By default, Serializor generates a machine-specific secret key. This ensures serialization works on the same machine but prevents deserialization on different machines.
-
-For cross-machine serialization (distributed systems, job queues, etc.), set a shared secret:
+By default, Serializor does not sign serialized data. For production use, especially in distributed systems or job queues, you should set a shared secret:
 
 ```php
 use Serializor\Serializor;
@@ -102,7 +100,7 @@ use Serializor\Serializor;
 Serializor::setDefaultSecret('your-shared-secret');
 ```
 
-All serialized data is HMAC-signed to prevent tampering.
+When a secret is set, all serialized data is HMAC-signed to prevent tampering.
 
 ## Custom Transformers
 

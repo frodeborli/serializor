@@ -5,14 +5,10 @@ declare(strict_types=1);
 namespace Serializor;
 
 use Serializor\Codec;
-use Serializor\SecretGenerators\SecretGenerationException;
-use Serializor\SecretGenerators\SecretGeneratorFactory;
 
 /**
  * Serializor class responsible for serializing and deserializing data,
- * particularly closures and anonymous classes. This class allows for the
- * serialization of tasks across processes, using a machine-specific secret
- * to enhance security and consistency in serialization.
+ * particularly closures and anonymous classes.
  */
 class Serializor
 {
@@ -83,22 +79,5 @@ class Serializor
     public static function registerFactory(string $class, callable $factory): void
     {
         Stasis::registerFactory($class, $factory);
-    }
-
-    /**
-     * Automatically identifies a machine-specific secret string.
-     * This secret is intended to be unique to the machine and persistent across reboots.
-     *
-     * @return string A machine-specific secret key
-     * @throws SecretGenerationException If no suitable secret could be generated
-     */
-    public static function getMachineSecret(): string
-    {
-        $factory = new SecretGeneratorFactory(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'machine-secret');
-        try {
-            return $factory->create(PHP_OS_FAMILY)->generate();
-        } catch (SecretGenerationException) {
-            return $factory->create('fallback')->generate();
-        }
     }
 }

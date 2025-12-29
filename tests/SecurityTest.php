@@ -99,8 +99,8 @@ test('setDefaultSecret affects static methods', function (): void {
     $result = Serializor::unserialize($serialized);
     expect($result())->toBe('with-secret');
 
-    // Reset to machine secret for other tests
-    Serializor::setDefaultSecret(Serializor::getMachineSecret());
+    // Reset to no secret for other tests
+    Serializor::setDefaultSecret('');
 });
 
 test('closure with secret preserves functionality', function (): void {

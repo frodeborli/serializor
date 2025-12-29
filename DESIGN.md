@@ -37,54 +37,12 @@ $restored = Opis\Closure\unserialize($serialized);
 
 **The problem**: Reconstructing closures from source code traditionally requires `eval()`, which has security implications and prevents opcode caching.
 
-**Serializor's solution**: A custom PHP stream wrapper that allows `require()` to load dynamically generated code.
+**Solution**: A custom PHP stream wrapper that allows `require()` to load dynamically generated code. This technique was used by Opis v3 and is adopted by both Serializor and Opis v4.
 
 ```php
-// Serializor: src/ClosureStream.php
-class ClosureStream
-{
-    const STREAM_PROTO = 'serializor';
-
-    protected $content;
-    protected $length;
-    protected $pointer = 0;
-
-    public function stream_open(string $path, ...): bool
-    {
-        $this->content = substr($path, strlen(self::STREAM_PROTO) + 3);
-        $this->length = strlen($this->content);
-        return true;
-    }
-
-    // ... stream_read, stream_eof, stream_stat, etc.
-}
-
-// Usage: Load code without eval()
+// Serializor: src/ClosureStream.php (serializor:// protocol)
+// Opis v3/v4: closure:// protocol
 $factory = require('serializor://' . $phpCode);
-```
-
-**Opis v4's approach**: Same technique with `closure://` protocol.
-
-```php
-// Opis v4: src/CodeStream.php
-final class CodeStream
-{
-    public const STREAM_PROTO = 'closure';
-
-    private ?string $content;
-    private int $length = 0;
-    private int $pointer = 0;
-
-    public function stream_open(string $path, ...): bool
-    {
-        $info = self::info($path);
-        $this->content = $info->getFactoryPHP();
-        $this->length = strlen($this->content);
-        return true;
-    }
-
-    // ... same stream methods
-}
 ```
 
 ### 3. Cycle Detection via WeakMap + ReflectionReference
@@ -314,29 +272,27 @@ Opis\Closure\Serializer::addResolver(...);
 
 ## Architectural Convergence Summary
 
-| Design Decision | Serializor (Sep 2024) | Opis v4 (Dec 2024) |
-|-----------------|----------------------|-------------------|
-| Direct serialize API | ✅ | ✅ |
-| Stream wrapper (no eval) | `serializor://` | `closure://` |
-| Object identity | `WeakMap` | `WeakMap` |
-| Reference identity | `ReflectionReference::getId()` | `ReflectionReference` |
-| Cycle handling | Early placeholder registration | Early placeholder registration |
-| Scope tracking | `$usedThis`, `$usedStatic` | `$thisRef`, `$scopeRef` |
-| Factory reconstruction | `extract()` + `Closure::bind()` | `extract()` + `Closure::bind()` |
-| Anonymous classes | Source extraction | Source extraction (v4.2) |
-| Custom handlers | `TransformerInterface` | Custom serializers |
+| Design Decision | Opis v3 | Serializor (Sep 2024) | Opis v4 (Dec 2024) |
+|-----------------|---------|----------------------|-------------------|
+| Direct serialize API | No (wrapper classes) | ✅ | ✅ |
+| Stream wrapper (no eval) | `closure://` | `serializor://` | `closure://` |
+| Object identity | ❌ | `WeakMap` | `WeakMap` |
+| Reference identity | ❌ | `ReflectionReference::getId()` | `ReflectionReference` |
+| Cycle handling | Limited | Early placeholder registration | Early placeholder registration |
+| Scope tracking | Basic | `$usedThis`, `$usedStatic` | `$thisRef`, `$scopeRef` |
+| Factory reconstruction | `eval()` | `extract()` + `Closure::bind()` | `extract()` + `Closure::bind()` |
+| Anonymous classes | ❌ | Source extraction | Source extraction (v4.2) |
+| Custom handlers | ❌ | `TransformerInterface` | Custom serializers |
 
 ## Why These Decisions Matter
 
 Several of these solutions are non-obvious:
 
-1. **Stream wrappers over eval**: Most developers reach for `eval()` first. The stream wrapper approach requires understanding PHP's stream wrapper API and recognizing that `require()` can load from custom protocols.
+1. **ReflectionReference for identity**: PHP doesn't expose reference identity directly. Using `ReflectionReference::fromArrayElement()` to get a unique ID for variable references is not well-documented.
 
-2. **ReflectionReference for identity**: PHP doesn't expose reference identity directly. Using `ReflectionReference::fromArrayElement()` to get a unique ID for variable references is not well-documented.
+2. **Early placeholder registration**: The insight that you must register a placeholder *before* recursing (not after) to handle cycles correctly is a common source of bugs in graph serialization.
 
-3. **Early placeholder registration**: The insight that you must register a placeholder *before* recursing (not after) to handle cycles correctly is a common source of bugs in graph serialization.
-
-4. **Scope keyword tracking**: Knowing which keywords (`$this`, `self`, `static`, `parent`) affect closure binding and must be tracked during tokenization requires deep understanding of PHP's scoping rules.
+3. **Scope keyword tracking**: Knowing which keywords (`$this`, `self`, `static`, `parent`) affect closure binding and must be tracked during tokenization requires deep understanding of PHP's scoping rules.
 
 ## Prior Art Statement
 
