@@ -6,8 +6,11 @@ namespace Serializor;
 
 use LogicException;
 use ReflectionReference;
+use Closure;
+use ReflectionFunction;
 use Serializor;
 use Serializor\Box;
+use Serializor\Primitive;
 use Serializor\SerializerError;
 use Serializor\Stasis;
 use Serializor\TransformerInterface;
@@ -138,6 +141,15 @@ class Codec
      */
     public function serialize(mixed &$value): string
     {
+        // Fast path: simple callables (named functions, static methods, instance methods)
+        if ($primitive = $this->asPrimitive($value)) {
+            $result = \serialize($primitive);
+            if ($this->secret !== '') {
+                return \hash_hmac('sha256', $result, $this->secret, false) . '|' . $result;
+            }
+            return $result;
+        }
+
         try {
             $this->encodedObjects = new WeakMap();
             $this->referenceSources = [];
@@ -168,6 +180,41 @@ class Codec
         }
 
         return $result;
+    }
+
+    /**
+     * Check if value can be serialized as a lightweight Primitive.
+     */
+    private function asPrimitive(mixed $value): ?Primitive
+    {
+        if (!($value instanceof Closure)) {
+            return null;
+        }
+
+        $rf = new ReflectionFunction($value);
+
+        // Anonymous closures have names starting with {closure
+        if (\str_starts_with($rf->getShortName(), '{closure')) {
+            return null;
+        }
+
+        // It's a named callable (function, static method, or instance method)
+        $name = $rf->getName();
+        $closureThis = $rf->getClosureThis();
+        $closureCalledClass = $rf->getClosureCalledClass();
+
+        if ($closureThis !== null) {
+            // Instance method - can't use Primitive as we need to serialize $this
+            return null;
+        }
+
+        if ($closureCalledClass !== null) {
+            // Static method
+            return new Primitive\Callable_([$closureCalledClass->getName(), $name]);
+        }
+
+        // Named function
+        return new Primitive\Callable_($name);
     }
 
     /**
@@ -363,6 +410,11 @@ class Codec
             }
 
             $result = unserialize($value);
+
+            if ($result instanceof Primitive) {
+                $result = $result->instantiate();
+                return $result;
+            }
 
             if ($result instanceof Box) {
                 foreach ($result->shortcuts as &$shortcut) {

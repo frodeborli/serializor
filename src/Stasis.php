@@ -5,35 +5,22 @@ declare(strict_types=1);
 namespace Serializor;
 
 use Closure;
+use ReflectionClass;
+use ReflectionFunction;
+use WeakMap;
+use WeakReference;
+use SplObjectStorage;
 
 /**
- * This class stores all data about objects so that they can be
- * properly unserialized. Arbitrary data can be stored in the
- * Stasis::$p array.
+ * Abstract base class for serializing values that can't be natively serialized.
+ * Each subclass handles a specific type with typed properties for efficient serialization.
  */
-final class Stasis
+abstract class Stasis
 {
-    private static ?\WeakMap $results = null;
-
-
-    private int $i;
-
     /**
-     * The class name.
-     *
-     * @var class-string
+     * WeakMap for caching resolved instances to preserve object identity.
      */
-    private string $c;
-
-    /**
-     * The serialized class members.
-     */
-    public array $p = [];
-
-    /**
-     * The object vars that are not class members.
-     */
-    public array $v = [];
+    protected static ?WeakMap $results = null;
 
     /**
      * @var Closure[]
@@ -41,31 +28,102 @@ final class Stasis
     public array $whenResolvedListeners = [];
 
     /**
-     * @param class-string $className
-     *
-     * @return void
+     * Custom factories for extending Stasis with user-defined types.
+     * @var array<class-string, callable(object): ?Stasis>
      */
-    public function __construct(string $className)
+    private static array $customFactories = [];
+
+    /**
+     * Create the appropriate Stasis subclass for the given value.
+     */
+    public static function from(mixed $value): Stasis
     {
-        $this->i = \mt_rand(0, \PHP_INT_MAX);
-        $this->c = $className;
+        // Check custom factories first
+        if (\is_object($value)) {
+            foreach (self::$customFactories as $class => $factory) {
+                if ($value instanceof $class) {
+                    $result = $factory($value);
+                    if ($result !== null) {
+                        return $result;
+                    }
+                }
+            }
+        }
+
+        // Closures
+        if ($value instanceof Closure) {
+            $rf = new ReflectionFunction($value);
+            $isAnonymous = \str_starts_with($rf->getShortName(), '{closure');
+
+            if (!$isAnonymous) {
+                // Named callable (function, static method, or instance method)
+                if ($rf->getClosureThis() !== null) {
+                    return BoundMethodStasis::fromClosure($value, $rf);
+                }
+                return CallableStasis::fromClosure($value, $rf);
+            }
+            return ClosureStasis::fromClosure($value, $rf);
+        }
+
+        // WeakReference
+        if ($value instanceof WeakReference) {
+            return WeakReferenceStasis::fromWeakReference($value);
+        }
+
+        // WeakMap
+        if ($value instanceof WeakMap) {
+            return WeakMapStasis::fromWeakMap($value);
+        }
+
+        // SplObjectStorage
+        if ($value instanceof SplObjectStorage) {
+            return SplObjectStorageStasis::fromStorage($value);
+        }
+
+        // Anonymous classes
+        if (\is_object($value)) {
+            $rc = new ReflectionClass($value);
+            if ($rc->isAnonymous()) {
+                return AnonymousClassStasis::fromObject($value, $rc);
+            }
+        }
+
+        // Regular objects
+        return ObjectStasis::fromObject($value);
     }
 
-    public function __serialize(): array
+    /**
+     * Register a custom factory for handling user-defined types.
+     *
+     * @param class-string $class The class name to handle
+     * @param callable(object): ?Stasis $factory Factory that returns a Stasis or null to skip
+     */
+    public static function registerFactory(string $class, callable $factory): void
     {
-        return [$this->c, $this->i, $this->p, $this->v];
+        self::$customFactories[$class] = $factory;
     }
 
-    public function __unserialize(array $data): void
-    {
-        [$this->c, $this->i, $this->p, $this->v] = $data;
-    }
+    /**
+     * Restore the original value from this Stasis.
+     */
+    abstract public function &getInstance(): mixed;
 
+    /**
+     * Get the class name this Stasis represents.
+     */
+    abstract public function getClassName(): string;
+
+    /**
+     * Add a callback to be invoked when this Stasis is resolved.
+     */
     public function whenResolved(Closure $listener): void
     {
         $this->whenResolvedListeners[] = $listener;
     }
 
+    /**
+     * Store the resolved instance and notify listeners.
+     */
     public function setInstance(mixed $value): void
     {
         self::init();
@@ -76,140 +134,35 @@ final class Stasis
         $this->whenResolvedListeners = [];
     }
 
+    /**
+     * Check if this Stasis has already been resolved.
+     */
     public function hasInstance(): bool
     {
         self::init();
-
         return isset(self::$results[$this]);
     }
 
-    private function &getCachedInstance(): mixed
+    /**
+     * Get the cached instance if it exists.
+     */
+    protected function &getCachedInstance(): mixed
     {
         self::init();
         $a = self::$results[$this];
-
         return $a[0];
     }
 
-    public function getClassName(): string
+    protected static function init(): void
     {
-        return $this->c;
-    }
-
-    public function &getInstance(): mixed
-    {
-        if ($this->hasInstance()) {
-            return $this->getCachedInstance();
+        if (self::$results === null) {
+            self::$results = new WeakMap();
         }
-        $rc = new \ReflectionClass($this->c);
-        $newInstance = $rc->newInstanceWithoutConstructor();
-
-        if (\method_exists($newInstance, '__unserialize')) {
-            $newInstance->__unserialize($this->p);
-            $this->setInstance($newInstance);
-
-            return $newInstance;
-        }
-
-        if ($rc->isInternal()) {
-            foreach ($this->p as $k => $v) {
-                $newInstance->$k = &$this->p[$k];
-            }
-            $this->setInstance($newInstance);
-
-            return $newInstance;
-        }
-
-        $properties = $this->p;
-        $propertiesToSet = [];
-        foreach (Reflect::getReflectionProperties($this->c) as $name => $rp) {
-            $parts = \explode("\0", $name, 2);
-            if (isset($parts[1])) {
-                $propertiesToSet[$parts[0]][$parts[1]] = $rp;
-            } else {
-                $propertiesToSet[$this->c][$name] = $rp;
-            }
-        }
-        $deferred = [];
-        foreach ($propertiesToSet as $className => $props) {
-            if ($className === $this->c) {
-                $prefix = '';
-            } else {
-                $prefix = $className . "\0";
-            }
-            $self = &$this;
-            \Closure::bind(function () use ($props, $properties, $prefix, &$deferred, $self) {
-                foreach ($props as $name => $rp) {
-                    if ($rp->isStatic()) {
-                        continue;
-                    }
-                    if (!isset($properties[$name]) && !\array_key_exists($name, $properties)) {
-                        continue;
-                    }
-                    $name = $prefix . $rp->getName();
-                    if ($properties[$name] instanceof Stasis) {
-                        if ($properties[$name]->hasInstance()) {
-                            $rp->setValue($this, $properties[$name]->getInstance());
-                        } else {
-                            $properties[$name]->whenResolved(function ($instance) use ($rp, $properties, $name) {
-                                $rp->setValue($this, $instance);
-                            });
-                        }
-                    } else {
-                        $rp->setValue($this, $properties[$name]);
-                    }
-                }
-            }, $newInstance, $className)();
-        }
-        $this->setInstance($newInstance);
-
-        while (!empty($deferred)) {
-            $c = array_shift($deferred);
-            if (!$c()) {
-                $deferred[] = $c;
-            }
-        }
-
-        return $newInstance;
     }
 
     /**
-     * Save the state of an object so that it can be restored after
-     * unserialization.
+     * Get object properties including private/protected from parent classes.
      */
-    public static function from(object $source): Stasis
-    {
-        $className = \get_class($source);
-        \assert($className !== \Closure::class, "Can't serialize Closure via Stasis::from()");
-
-        $rc = Reflect::getReflectionClass($className);
-        \assert(!$rc->isAnonymous(), "Can't serialize anonymous classes via Stasis::from()");
-        \assert($className !== Stasis::class, 'Should not directly serialize a Stasis class');
-
-        $frozen = new Stasis(\get_class($source));
-
-        if (\method_exists($source, '__serialize')) {
-            $frozen->p = $source->__serialize();
-        } else {
-            $rps = Reflect::getReflectionProperties($className);
-            foreach ($rps as $name => $rp) {
-                if ($rp->isStatic() || !$rp->isInitialized($source)) {
-                    continue;
-                }
-                $frozen->p[$name] = $rp->getValue($source);
-            }
-            $objectVars = \get_object_vars($source);
-            foreach ($objectVars as $name => $v) {
-                if (!\array_key_exists($name, $frozen->p)) {
-                    // Use reference to array element, not the loop variable
-                    $frozen->p[$name] = &$objectVars[$name];
-                }
-            }
-        }
-
-        return $frozen;
-    }
-
     public static function getObjectProperties(object $value): array
     {
         $ro = new \ReflectionObject($value);
@@ -234,6 +187,9 @@ final class Stasis
         return $result;
     }
 
+    /**
+     * Set object properties including private/protected from parent classes.
+     */
     public static function setObjectProperties(object $value, array $properties): void
     {
         $ro = new \ReflectionObject($value);
@@ -257,12 +213,5 @@ final class Stasis
                 $prefix = $cro->getName() . "\0";
             }
         } while ($cro !== false);
-    }
-
-    private static function init(): void
-    {
-        if (self::$results === null) {
-            self::$results = new \WeakMap();
-        }
     }
 }

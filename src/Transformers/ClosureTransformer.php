@@ -206,7 +206,11 @@ class ClosureTransformer implements TransformerInterface
                 $use = $value->p['use'];
             }
 
-            $result = self::$codeMakers[$hash]($use, $value->p['this'], $value->p['scope_class']);
+            $thisObject = $value->p['this'];
+            // If $this is bound, derive scope from the actual object (handles anonymous classes)
+            $scopeClass = $thisObject !== null ? \get_class($thisObject) : $value->p['scope_class'];
+
+            $result = self::$codeMakers[$hash]($use, $thisObject, $scopeClass);
         }
 
         self::$transformedObjects[$value] = $result;
