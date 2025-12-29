@@ -1,6 +1,6 @@
 # Serializor: Advanced PHP Serialization Made Simple
 
-**Serializor** is a cutting-edge PHP serialization library designed to simplify the serialization of closures, anonymous classes, and complex data structures. It seamlessly handles scenarios typically challenging for other libraries without requiring modifications to existing code. Whether for distributed computing, caching objects, or job queuing, Serializor ensures that complex data types are serialized and deserialized flawlessly, preserving their behavior and state.
+**Serializor** is a PHP serialization library designed to simplify the serialization of closures, anonymous classes, and complex data structures. It handles scenarios typically challenging for native PHP serialization without requiring modifications to existing code. Whether for distributed computing, caching objects, or job queuing, Serializor ensures that complex data types are serialized and deserialized correctly, preserving their behavior and state.
 
 ## Advanced Use Cases Supported by Serializor
 
@@ -62,13 +62,52 @@ Serializor does not rely on wrapping closures. You can serialize a closure direc
     $data = $serializor->serialize(function() {});
     $func = $serializor->unserialize($data);
 
-## Performance
+## Comparison with Other Libraries
 
-Serializor significantly outperforms opis/closure and laravel/serializable-closure, while also being more powerful.
+There are two other popular PHP closure serialization libraries: [opis/closure](https://github.com/opis/closure) (v4.x) and [laravel/serializable-closure](https://github.com/laravel/serializable-closure). Each library has different design goals and trade-offs.
 
-### Serialization Performance
+### Feature Comparison
 
-Serializor is order of magnitude faster than Opis/Closure. It is slightly slower on unserialization, but much faster on serialization - more than making up for the slower serialization.
+| Feature | Serializor | opis/closure 4.x | laravel/serializable-closure |
+|---------|------------|------------------|------------------------------|
+| Closure serialization | ✓ | ✓ | ✓ |
+| Anonymous class serialization | ✓ | ✓ | ✗ |
+| No wrapper classes required | ✓ | ✓¹ | ✗ |
+| Readonly `Closure` properties (no class changes) | ✓ | ✗² | ✗ |
+| Closures capturing readonly properties | ✓ | ✓ | ✗³ |
+| Magic constants (`__DIR__`, `__FILE__`, etc.) | ✓ | ✓ | ✓ |
+| First-class callables (`$obj->method(...)`) | ✓ | ✓ | ✓ |
+| Recursive/circular references | ✓ | ✓ | ✓ |
+| SplObjectStorage support | ✓ | ✓ | ✗ |
+| WeakReference support | ✓ | ✓ | ✗ |
+| HMAC signing | ✓ | ✓ | ✓ |
+| Custom transformers | ✓ | ✓ | ✓ |
+
+**Notes:**
+1. Opis 4.x provides `Opis\Closure\serialize()` functions, eliminating the need for manual wrapper classes in most cases.
+2. Opis 4.x supports readonly properties, but requires the containing class to implement `__serialize()`/`__unserialize()` magic methods.
+3. Laravel explicitly documents that "serializing closures that reference objects with readonly properties is not supported."
+
+### Architectural Differences
+
+**Serializor** serializes closures directly by extracting and storing their source code, then reconstructing them via a stream wrapper. This approach:
+- Works with typed and readonly properties without any class modifications
+- Can serialize third-party objects containing closures without changes
+- Serializes the actual closure, not a wrapper object
+
+**opis/closure 4.x** provides `Opis\Closure\serialize()` and `unserialize()` functions that handle closures transparently. For readonly properties, the containing class must implement serialization magic methods.
+
+**laravel/serializable-closure** requires wrapping closures in `SerializableClosure` before serialization, which affects type hints and does not work with `readonly Closure` properties.
+
+### Known Limitations (all libraries)
+
+All three libraries share some limitations due to PHP's reflection capabilities:
+- Multiple closures on the same line cannot be distinguished (PHP lacks column info)
+- Arrow functions in ternary expressions may not parse correctly
+
+### Performance
+
+Serializor's direct serialization approach offers different performance characteristics:
 
 ![Serialization](docs/serialization-benchmark.png)
 
@@ -148,28 +187,32 @@ $unserializedClass = Serializor::unserialize($serialized);
 echo $unserializedClass->sayHello(); // Output: Hello from anonymous class!
 ```
 
-## Comparison with Alternative Approaches
+## Why Choose Serializor?
 
-Many serialization libraries require you to wrap closures with special types, like `Opis\Closure`’s `SerializableClosure`. This often leads to the following issues:
+Serializor's key advantage is **zero-modification serialization** of existing code:
 
-1. **Modifying the Class Structure**: You’re forced to change the property types in your classes to support both `Closure` and `SerializableClosure`. For example:
-   ```php
-   public Closure|SerializableClosure $myClosure;
-   ```
+```php
+// Works without any class modifications
+class MyService {
+    public readonly Closure $handler;
 
-   This complicates your code and requires you to adjust the types throughout your codebase.
+    public function __construct() {
+        $this->handler = fn($x) => $x * 2;
+    }
+}
 
-2. **Typed Readonly Properties**: Libraries like `Opis\Closure` do not handle typed readonly properties natively, especially with the strict type `public readonly Closure $prop`. You would need to remove the type hint or change the type altogether to something more flexible.
+$service = new MyService();
+$serialized = Serializor::serialize($service);  // Just works
+$restored = Serializor::unserialize($serialized);
+```
 
-3. **Additional Boilerplate**: Wrapping closures in special classes like `SerializableClosure` adds unnecessary boilerplate and reduces the readability of your code.
+This is particularly valuable when:
 
-**Serializor** solves these issues:
+1. **Third-party objects**: Serializing objects from libraries you don't control that contain closures.
 
-- **No Type Changes**: With Serializor, there is no need to modify property types or add support for `SerializableClosure`. You can serialize closures stored in `Closure`-typed properties directly without any changes to your class design.
-  
-- **Typed Readonly Properties**: Serializor supports `public readonly Closure $prop` without breaking the type system or requiring you to adjust property types.
+2. **Strict typing**: Using `public readonly Closure $prop` without compromising type safety or adding magic methods.
 
-- **Anonymous Classes**: Serializor supports the serialization of anonymous classes out of the box, though deserialization will create a class that is functionally similar but not identical. In many cases, this difference is negligible as long as the behavior of the class is maintained.
+3. **Gradual adoption**: Adding closure serialization to an existing codebase without refactoring class definitions.
 
 ## Machine-Specific Secrets
 

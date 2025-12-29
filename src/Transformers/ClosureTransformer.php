@@ -251,6 +251,47 @@ class ClosureTransformer implements TransformerInterface
             $tokens = self::$tokenCache[$sourceFile] = PhpToken::tokenize(file_get_contents($sourceFile));
         }
 
+        // Prepare magic constant replacements
+        $closureScopeClass = $rf->getClosureScopeClass();
+        $magicDir = \var_export(\dirname($sourceFile), true);
+        $magicFile = \var_export($sourceFile, true);
+        $magicClass = \var_export($closureScopeClass?->getName() ?? '', true);
+        $closureStartLine = $rf->getStartLine();
+
+        // Extract namespace from tokens (ReflectionFunction::getNamespaceName() doesn't work for closures)
+        $namespace = '';
+        foreach ($tokens as $idx => $token) {
+            if ($token->line >= $closureStartLine) {
+                break;
+            }
+            if ($token->id === \T_NAMESPACE) {
+                // Get the namespace name from following tokens
+                $namespace = '';
+                for ($i = $idx + 1; $i < count($tokens); $i++) {
+                    $t = $tokens[$i];
+                    if ($t->id === \T_NAME_QUALIFIED || $t->id === \T_STRING) {
+                        $namespace = $t->text;
+                        break;
+                    }
+                    if ($t->text === ';' || $t->text === '{') {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Use the original closure's name for __FUNCTION__ (preserves {closure:path:line} format)
+        $magicFunction = \var_export($rf->getName(), true);
+        $magicMethod = \var_export(
+            ($closureScopeClass ? $closureScopeClass->getName() . '::' : '') . $rf->getName(),
+            true
+        );
+
+        // Check for multiple closures on the same line and disambiguate or throw
+        $closuresOnLine = self::findClosuresOnLine($tokens, $closureStartLine);
+        $targetClosureIdx = self::matchClosureBySignature($closuresOnLine, $rf);
+        $targetStartIdx = $targetClosureIdx !== null ? $closuresOnLine[$targetClosureIdx]['startIdx'] : null;
+
         $capture = false;
         $capturedTokens = [];
         $stackDepth = 0;
@@ -260,16 +301,20 @@ class ClosureTransformer implements TransformerInterface
             if ($token->id === \T_NAMESPACE) {
                 $useStatements = [];
             }
-            if ($token->id === \T_STRING || $token->id === \T_NAME_QUALIFIED || $token->id === \T_NAME_FULLY_QUALIFIED) {                
+            if ($token->id === \T_STRING || $token->id === \T_NAME_QUALIFIED || $token->id === \T_NAME_FULLY_QUALIFIED) {
                 if ($tokens[$idx - 2]->id === \T_USE) {
                     $useStatements[] = self::extractStatement($tokens, $idx - 2);
                 } elseif ($tokens[$idx - 2]->id === \T_FUNCTION && $tokens[$idx - 4]->id === \T_USE) {
                     $useStatements[] = self::extractStatement($tokens, $idx - 4);
                 }
-                
+
             }
             if (!$capture) {
                 if ($token->line === $rf->getStartLine()) {
+                    // If we have a specific target index from disambiguation, only start at that index
+                    if ($targetStartIdx !== null && $idx !== $targetStartIdx) {
+                        continue;
+                    }
                     if ($token->id === \T_STATIC && $tokens[$idx + 2]?->id === \T_FUNCTION) {
                         $capture = true;
                         $isStaticFunction = true;
@@ -314,7 +359,18 @@ class ClosureTransformer implements TransformerInterface
         }
         $codes = [];
         foreach ($capturedTokens as $token) {
-            $codes[] = $token->text;
+            // Replace magic constants with their actual values
+            $text = match ($token->id) {
+                \T_LINE => (string) $token->line,
+                \T_DIR => $magicDir,
+                \T_FILE => $magicFile,
+                \T_CLASS_C => $magicClass,
+                \T_FUNC_C => $magicFunction,
+                \T_METHOD_C => $magicMethod,
+                \T_NS_C => \var_export($namespace, true),
+                default => $token->text,
+            };
+            $codes[] = $text;
         }
 
         self::$functionCache[$hash] = [
@@ -373,5 +429,220 @@ class ClosureTransformer implements TransformerInterface
             }
         }
         return implode("", $captured);
+    }
+
+    /**
+     * Find all closures on a given line and extract their signatures.
+     *
+     * @param PhpToken[] $tokens
+     * @param int $line
+     * @return array Array of ['startIdx' => int, 'params' => string[], 'useVars' => string[]]
+     */
+    private static function findClosuresOnLine(array &$tokens, int $line): array
+    {
+        $closures = [];
+        $tokenCount = count($tokens);
+
+        for ($i = 0; $i < $tokenCount; $i++) {
+            $token = $tokens[$i];
+            if ($token->line !== $line) {
+                if ($token->line > $line) {
+                    break;
+                }
+                continue;
+            }
+
+            // Check for closure start: function or fn keyword
+            $isArrowFunc = false;
+            $closureStartIdx = null;
+
+            if ($token->id === \T_FN) {
+                $isArrowFunc = true;
+                $closureStartIdx = $i;
+            } elseif ($token->id === \T_FUNCTION) {
+                // Make sure this is a closure (anonymous function), not a named function
+                // Look for ( after function keyword
+                $nextNonWhitespace = $i + 1;
+                while ($nextNonWhitespace < $tokenCount && $tokens[$nextNonWhitespace]->isIgnorable()) {
+                    $nextNonWhitespace++;
+                }
+                if ($nextNonWhitespace < $tokenCount && $tokens[$nextNonWhitespace]->text === '(') {
+                    $closureStartIdx = $i;
+                }
+            } elseif ($token->id === \T_STATIC) {
+                // Check for static function or static fn
+                $nextNonWhitespace = $i + 1;
+                while ($nextNonWhitespace < $tokenCount && $tokens[$nextNonWhitespace]->isIgnorable()) {
+                    $nextNonWhitespace++;
+                }
+                if ($nextNonWhitespace < $tokenCount) {
+                    if ($tokens[$nextNonWhitespace]->id === \T_FN) {
+                        // static fn - capture starts at T_FN (the original code captures at fn, not static)
+                        $isArrowFunc = true;
+                        $closureStartIdx = $nextNonWhitespace;
+                        $i = $nextNonWhitespace; // Skip to fn
+                    } elseif ($tokens[$nextNonWhitespace]->id === \T_FUNCTION) {
+                        // static function - check it's a closure, capture starts at T_STATIC
+                        $afterFunc = $nextNonWhitespace + 1;
+                        while ($afterFunc < $tokenCount && $tokens[$afterFunc]->isIgnorable()) {
+                            $afterFunc++;
+                        }
+                        if ($afterFunc < $tokenCount && $tokens[$afterFunc]->text === '(') {
+                            $closureStartIdx = $i; // Keep at T_STATIC for static function
+                            $i = $nextNonWhitespace;
+                        }
+                    }
+                }
+            }
+
+            if ($closureStartIdx === null) {
+                continue;
+            }
+
+            // Extract parameter names and use variables
+            $params = [];
+            $useVars = [];
+            $parenDepth = 0;
+            $state = 'searching'; // searching, in_params, after_params, in_use
+
+            for ($j = $i + 1; $j < $tokenCount; $j++) {
+                $t = $tokens[$j];
+
+                if ($t->isIgnorable()) {
+                    continue;
+                }
+
+                if ($state === 'searching') {
+                    if ($t->text === '(') {
+                        $state = 'in_params';
+                        $parenDepth = 1;
+                    }
+                } elseif ($state === 'in_params') {
+                    if ($t->text === '(') {
+                        $parenDepth++;
+                    } elseif ($t->text === ')') {
+                        $parenDepth--;
+                        if ($parenDepth === 0) {
+                            $state = 'after_params';
+                        }
+                    } elseif ($t->id === \T_VARIABLE) {
+                        $params[] = substr($t->text, 1); // Remove $
+                    }
+                } elseif ($state === 'after_params') {
+                    if ($t->id === \T_USE) {
+                        $state = 'before_use_vars';
+                    } elseif ($t->text === '{' || $t->text === '=>' || $t->text === ':') {
+                        // Closure body or return type, we're done
+                        break;
+                    }
+                } elseif ($state === 'before_use_vars') {
+                    if ($t->text === '(') {
+                        $state = 'in_use';
+                        $parenDepth = 1;
+                    }
+                } elseif ($state === 'in_use') {
+                    if ($t->text === '(') {
+                        $parenDepth++;
+                    } elseif ($t->text === ')') {
+                        $parenDepth--;
+                        if ($parenDepth === 0) {
+                            break;
+                        }
+                    } elseif ($t->id === \T_VARIABLE) {
+                        $useVars[] = substr($t->text, 1); // Remove $
+                    }
+                }
+            }
+
+            $closures[] = [
+                'startIdx' => $closureStartIdx,
+                'params' => $params,
+                'useVars' => $useVars,
+            ];
+        }
+
+        return $closures;
+    }
+
+    /**
+     * Match a closure's reflection info against found closures on the line.
+     *
+     * @param array $closuresOnLine From findClosuresOnLine()
+     * @param ReflectionFunction $rf
+     * @return int|null Index in closuresOnLine array, or null if no unique match
+     * @throws SerializerError If multiple closures match (ambiguous)
+     */
+    private static function matchClosureBySignature(array $closuresOnLine, ReflectionFunction $rf): ?int
+    {
+        if (count($closuresOnLine) <= 1) {
+            return count($closuresOnLine) === 1 ? 0 : null;
+        }
+
+        // Get expected parameters
+        $expectedParams = [];
+        foreach ($rf->getParameters() as $param) {
+            $expectedParams[] = $param->getName();
+        }
+
+        // Get expected use variables (for arrow functions, these are in getStaticVariables)
+        $expectedUseVars = array_keys($rf->getStaticVariables());
+
+        $matches = [];
+        foreach ($closuresOnLine as $idx => $closureInfo) {
+            $paramsMatch = $closureInfo['params'] === $expectedParams;
+
+            // For use vars, we need to check if they match
+            // Arrow functions capture implicitly, traditional closures use explicit use()
+            $useVarsMatch = true;
+            if (!empty($closureInfo['useVars']) || !empty($expectedUseVars)) {
+                // Sort both arrays for comparison
+                $foundUseVars = $closureInfo['useVars'];
+                sort($foundUseVars);
+                $expectedSorted = $expectedUseVars;
+                sort($expectedSorted);
+
+                // For traditional closures, use vars should match exactly
+                if (!empty($closureInfo['useVars'])) {
+                    $useVarsMatch = $foundUseVars === $expectedSorted;
+                }
+            }
+
+            if ($paramsMatch && $useVarsMatch) {
+                $matches[] = $idx;
+            }
+        }
+
+        if (count($matches) === 1) {
+            return $matches[0];
+        }
+
+        if (count($matches) === 0) {
+            // Try matching by params only (arrow functions don't have explicit use)
+            foreach ($closuresOnLine as $idx => $closureInfo) {
+                if ($closureInfo['params'] === $expectedParams) {
+                    $matches[] = $idx;
+                }
+            }
+            if (count($matches) === 1) {
+                return $matches[0];
+            }
+        }
+
+        // Build error message with details about what was found
+        $details = [];
+        foreach ($closuresOnLine as $idx => $info) {
+            $paramStr = empty($info['params']) ? '()' : '($' . implode(', $', $info['params']) . ')';
+            $useStr = empty($info['useVars']) ? '' : ' use ($' . implode(', $', $info['useVars']) . ')';
+            $details[] = "  #{$idx}: {$paramStr}{$useStr}";
+        }
+        $expectedParamStr = empty($expectedParams) ? '()' : '($' . implode(', $', $expectedParams) . ')';
+        $expectedUseStr = empty($expectedUseVars) ? '' : ' [captures: $' . implode(', $', $expectedUseVars) . ']';
+
+        throw new SerializerError(
+            "Cannot serialize closure: multiple closures found on the same line and cannot be uniquely distinguished.\n" .
+            "Target closure signature: {$expectedParamStr}{$expectedUseStr}\n" .
+            "Found closures:\n" . implode("\n", $details) . "\n" .
+            "Tip: Place each closure on its own line, or use distinct parameter names."
+        );
     }
 }

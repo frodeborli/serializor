@@ -128,6 +128,10 @@ class AnonymousClassTransformer implements TransformerInterface
                     array_pop($capturedTokens);
                 }
                 $stateChangeToken = $token;
+            } elseif ($state === self::STARTING && $token->text === '{') {
+                // Handle `new class { ... }` without constructor args
+                $state = self::BODY;
+                $stateChangeToken = $token;
             } elseif ($state === self::BEFORE_BODY && $token->text === '{') {
                 $state = self::BODY;
                 $stateChangeToken = $token;

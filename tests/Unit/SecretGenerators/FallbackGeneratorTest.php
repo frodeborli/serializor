@@ -28,6 +28,27 @@ test('generates a secret locally', function (): void {
     unlink($path);
 });
 
+test('generates a valid sha256 hex string', function (): void {
+    $path = createPathToFileThatDoesNotExist();
+    $secretGenerator = new FallbackSecretGenerator($path);
+
+    $actual = $secretGenerator->generate();
+
+    expect($actual)->toMatch('/^[a-f0-9]{64}$/');
+    unlink($path);
+});
+
+test('returns same secret on subsequent calls', function (): void {
+    $path = createPathToFileThatDoesNotExist();
+    $secretGenerator = new FallbackSecretGenerator($path);
+
+    $first = $secretGenerator->generate();
+    $second = $secretGenerator->generate();
+
+    expect($second)->toBe($first);
+    unlink($path);
+});
+
 test('throws an exception if secret hash could not be generated', function (): void {
     $secretGenerator = new FallbackSecretGenerator('.');
     set_error_handler(fn(): bool => true, E_WARNING);

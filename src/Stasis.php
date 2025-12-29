@@ -205,9 +205,11 @@ final class Stasis
                 }
                 $frozen->p[$name] = $rp->getValue($source);
             }
-            foreach (\get_object_vars($source) as $name => $v) {
+            $objectVars = \get_object_vars($source);
+            foreach ($objectVars as $name => $v) {
                 if (!\array_key_exists($name, $frozen->p)) {
-                    $frozen->p[$name] = &$v;
+                    // Use reference to array element, not the loop variable
+                    $frozen->p[$name] = &$objectVars[$name];
                 }
             }
         }

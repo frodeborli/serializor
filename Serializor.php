@@ -7,6 +7,9 @@ use Serializor\SecretGenerators\SecretGenerationException;
 use Serializor\SecretGenerators\SecretGeneratorFactory;
 use Serializor\Transformers\AnonymousClassTransformer;
 use Serializor\Transformers\ClosureTransformer;
+use Serializor\Transformers\SplObjectStorageTransformer;
+use Serializor\Transformers\WeakMapTransformer;
+use Serializor\Transformers\WeakReferenceTransformer;
 
 /**
  * Serializor class responsible for serializing and deserializing data,
@@ -126,6 +129,9 @@ class Serializor
         return [
             new ClosureTransformer(self::$transformUseVarsFunc, self::$resolveUseVarsFunc),
             new AnonymousClassTransformer(),
+            new SplObjectStorageTransformer(),
+            new WeakMapTransformer(),
+            new WeakReferenceTransformer(),
         ];
     }
 

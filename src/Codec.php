@@ -69,6 +69,20 @@ class Codec
     private WeakMap $encodedObjects;
 
     /**
+     * Tracks objects that are strongly referenced (not only via WeakReference/WeakMap keys).
+     * Used to determine if WeakReference targets should be preserved.
+     *
+     * @var array<int,true>
+     */
+    private array $stronglyReferenced = [];
+
+    /**
+     * Flag indicating we're currently in a weak context (WeakReference or WeakMap key).
+     * Objects encountered in weak context should not be marked as strongly referenced.
+     */
+    private bool $inWeakContext = false;
+
+    /**
      * @param string|null $secret       A string secret which is shared among applications serializing and unserializing
      * @param array|null  $transformers Custom set of transformers (overrides the default transformers)
      *
@@ -137,16 +151,21 @@ class Codec
             $this->referenceTargets = [];
             $this->referenceCallbacks = [];
             $this->shortcuts = [];
+            $this->stronglyReferenced = [];
+            $this->inWeakContext = false;
             $result = \serialize($value);
         } catch (Throwable $e) {
             $v = [&$value];
             $result = $this->transform($v, [], null);
+            $this->markDeadWeakReferences();
             $result = \serialize(new Box($result, $this->shortcuts));
         } finally {
             $this->referenceSources = [];
             $this->referenceTargets = [];
             $this->referenceCallbacks = [];
             $this->shortcuts = [];
+            $this->stronglyReferenced = [];
+            $this->inWeakContext = false;
         }
 
         if ($this->secret !== '') {
@@ -156,6 +175,42 @@ class Codec
         }
 
         return $result;
+    }
+
+    /**
+     * Mark WeakReference/WeakMap Stasis objects as dead if their targets are not strongly referenced.
+     */
+    private function markDeadWeakReferences(): void
+    {
+        foreach ($this->shortcuts as $stasis) {
+            if (!($stasis instanceof Stasis)) {
+                continue;
+            }
+            $className = $stasis->getClassName();
+
+            if ($className === \WeakReference::class) {
+                $ref = $stasis->p['ref'] ?? null;
+                if (\is_object($ref)) {
+                    $objId = \spl_object_id($ref);
+                    if (!isset($this->stronglyReferenced[$objId])) {
+                        $stasis->p['dead'] = true;
+                    }
+                }
+            } elseif ($className === \WeakMap::class) {
+                // WeakMap keys are weakly referenced - mark dead if key not strongly referenced
+                $keys = $stasis->p['k'] ?? [];
+                $dead = $stasis->p['dead'] ?? [];
+                foreach ($keys as $i => $key) {
+                    if (\is_object($key)) {
+                        $objId = \spl_object_id($key);
+                        if (!isset($this->stronglyReferenced[$objId])) {
+                            $dead[$i] = true;
+                        }
+                    }
+                }
+                $stasis->p['dead'] = $dead;
+            }
+        }
     }
 
     /**
@@ -186,6 +241,10 @@ class Codec
 
         // Objects can also be found via the WeakMap
         if (\is_object($source) && isset($this->encodedObjects[$source])) {
+            // Track as strongly referenced if not in weak context
+            if (!$this->inWeakContext) {
+                $this->stronglyReferenced[\spl_object_id($source)] = true;
+            }
             $result = $this->encodedObjects[$source];
             $this->referenceTargets[$referenceId] = &$result;
 
@@ -196,8 +255,10 @@ class Codec
         if (\is_array($source)) {
             /**
              * Proceed with creating a new array.
+             * Set referenceTargets BEFORE processing children to handle recursive references.
              */
             $result = [];
+            $this->referenceTargets[$referenceId] = &$result;
             foreach ($source as $k => &$v) {
                 if (\is_scalar($v) || $v === null) {
                     $result[$k] = &$v;
@@ -205,21 +266,29 @@ class Codec
                     $result[$k] = &$this->transform($source[$k], $path, $k);
                 }
             }
-            $this->referenceTargets[$referenceId] = &$result;
 
             return $this->referenceTargets[$referenceId];
         }
 
         // Remaining objects are passed as is if they are serializable
         try {
-            serialize($source);
+            $serialized = serialize($source);
             /**
              * If an exception was not thrown during serialization, it indicates that
              * PHP can serialize this value without additional recursive logic.
+             * However, some types like SplObjectStorage need special handling to preserve
+             * object identity when they're part of a larger transformed structure.
              */
+            if (\str_contains($serialized, 'SplObjectStorage') || \str_contains($serialized, 'WeakReference')) {
+                throw new LogicException('Type requires transformer for proper handling');
+            }
             $target = $source;
             if (\is_object($source)) {
                 $this->encodedObjects[$source] = $target;
+                // Track as strongly referenced if not in weak context
+                if (!$this->inWeakContext) {
+                    $this->stronglyReferenced[\spl_object_id($source)] = true;
+                }
             }
             $this->referenceTargets[$referenceId] = &$target;
 
@@ -241,9 +310,30 @@ class Codec
             $this->shortcuts[] = &$target;
             if (\is_object($source)) {
                 $this->encodedObjects[$source] = $target;
+                // Track as strongly referenced if not in weak context
+                if (!$this->inWeakContext) {
+                    $this->stronglyReferenced[\spl_object_id($source)] = true;
+                }
             }
             $this->referenceTargets[$referenceId] = &$target;
-            $target->p = &$this->transform($target->p, $path, 'p');
+
+            // Handle weak context for WeakReference and WeakMap
+            $wasInWeakContext = $this->inWeakContext;
+            if ($source instanceof \WeakReference) {
+                // WeakReference: entire p is weak context
+                $this->inWeakContext = true;
+                $target->p = &$this->transform($target->p, $path, 'p');
+                $this->inWeakContext = $wasInWeakContext;
+            } elseif ($source instanceof \WeakMap) {
+                // WeakMap: keys ('k') are weak context, values ('v') are strong context
+                $this->inWeakContext = true;
+                $target->p['k'] = &$this->transform($target->p['k'], $path, 'k');
+                $this->inWeakContext = $wasInWeakContext;
+                $target->p['v'] = &$this->transform($target->p['v'], $path, 'v');
+                // 'dead' array is scalars, doesn't need transform
+            } else {
+                $target->p = &$this->transform($target->p, $path, 'p');
+            }
 
             return $target;
         } else {
@@ -256,6 +346,10 @@ class Codec
             $this->shortcuts[] = &$target;
             if (\is_object($source)) {
                 $this->encodedObjects[$source] = $target;
+                // Track as strongly referenced if not in weak context
+                if (!$this->inWeakContext) {
+                    $this->stronglyReferenced[\spl_object_id($source)] = true;
+                }
             }
             $this->referenceTargets[$referenceId] = &$target;
             $target->p = &$this->transform($target->p, $path, 'p');

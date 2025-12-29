@@ -40,4 +40,11 @@ class RegularClass
     {
         return 'instanceMethod';
     }
+
+    public function getSelfReturningClosure(): \Closure
+    {
+        return function (): self {
+            return $this;
+        };
+    }
 }
