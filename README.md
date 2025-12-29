@@ -1,5 +1,14 @@
 # Serializor: Advanced PHP Serialization Made Simple
 
+[![Tests](https://github.com/frodeborli/serializor/actions/workflows/tests.yml/badge.svg)](https://github.com/frodeborli/serializor/actions/workflows/tests.yml)
+[![PHP 8.2](https://img.shields.io/badge/PHP-8.2-blue.svg)](https://www.php.net/)
+[![PHP 8.3](https://img.shields.io/badge/PHP-8.3-blue.svg)](https://www.php.net/)
+[![PHP 8.4](https://img.shields.io/badge/PHP-8.4-blue.svg)](https://www.php.net/)
+[![PHP 8.5](https://img.shields.io/badge/PHP-8.5-blue.svg)](https://www.php.net/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Packagist Version](https://img.shields.io/packagist/v/frodeborli/serializor)](https://packagist.org/packages/frodeborli/serializor)
+[![Packagist Downloads](https://img.shields.io/packagist/dt/frodeborli/serializor)](https://packagist.org/packages/frodeborli/serializor)
+
 **Serializor** is a PHP serialization library designed to simplify the serialization of closures, anonymous classes, and complex data structures. It handles scenarios typically challenging for native PHP serialization without requiring modifications to existing code. Whether for distributed computing, caching objects, or job queuing, Serializor ensures that complex data types are serialized and deserialized correctly, preserving their behavior and state.
 
 ## Advanced Use Cases Supported by Serializor
@@ -99,10 +108,13 @@ There are two other popular PHP closure serialization libraries: [opis/closure](
 
 **laravel/serializable-closure** requires wrapping closures in `SerializableClosure` before serialization, which affects type hints and does not work with `readonly Closure` properties.
 
-### Known Limitations (all libraries)
+### Known Limitations
 
-All three libraries share some limitations due to PHP's reflection capabilities:
-- Multiple closures on the same line cannot be distinguished (PHP lacks column info)
+**Serializor-specific:**
+- Anonymous classes extending internal PHP classes (stdClass, ArrayObject) cannot be serialized due to PHP's closure binding restrictions
+
+**All libraries share:**
+- Multiple closures on the same line with identical signatures cannot be distinguished (PHP lacks column info). Serializor throws an informative exception in this case rather than silently picking the wrong closure.
 - Arrow functions in ternary expressions may not parse correctly
 
 ### Performance
@@ -137,6 +149,8 @@ Serializor is designed to work seamlessly as a drop-in replacement for PHP’s n
 ### Serialization of Closures
 
 ```php
+use Serializor\Serializor;
+
 $closure = function () {
     return 'Hello from closure!';
 };
@@ -153,6 +167,8 @@ echo $unserializedClosure(); // Output: Hello from closure!
 Serializor handles typed readonly properties with no modifications required:
 
 ```php
+use Serializor\Serializor;
+
 class MyClass {
     public readonly Closure $myClosure;
 
@@ -172,12 +188,18 @@ echo $unserializedInstance->myClosure(); // Output: I am serialized!
 
 ### Serializing Anonymous Classes
 
-Serializor supports the serialization of anonymous classes:
+Serializor supports the serialization of anonymous classes, including those implementing interfaces:
 
 ```php
-$anonClass = new class {
+use Serializor\Serializor;
+
+$anonClass = new class implements \Stringable {
     public function sayHello() {
         return 'Hello from anonymous class!';
+    }
+
+    public function __toString(): string {
+        return $this->sayHello();
     }
 };
 
@@ -192,6 +214,8 @@ echo $unserializedClass->sayHello(); // Output: Hello from anonymous class!
 Serializor's key advantage is **zero-modification serialization** of existing code:
 
 ```php
+use Serializor\Serializor;
+
 // Works without any class modifications
 class MyService {
     public readonly Closure $handler;
@@ -219,6 +243,8 @@ This is particularly valuable when:
 For security, Serializor generates machine-specific secret keys by inspecting certain system files. This ensures that serialization and deserialization work consistently on the same machine but will not allow deserialization on a different machine. If you need cross-machine serialization, you can set a custom secret:
 
 ```php
+use Serializor\Serializor;
+
 Serializor::setDefaultSecret('your-custom-secret');
 ```
 
