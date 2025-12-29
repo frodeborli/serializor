@@ -49,6 +49,7 @@ Test files:
 - PHP 8.2+ with strict types
 - No over-engineering - keep solutions minimal
 - Prefer explicit errors over silent incorrect behavior
+- Don't include signatures in the commit message (such as claude code)
 
 ## Use github cli
 

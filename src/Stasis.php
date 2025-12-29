@@ -180,18 +180,11 @@ final class Stasis
     public static function from(object $source): Stasis
     {
         $className = \get_class($source);
-        if ($className === \Closure::class) {
-            throw new SerializerError("Can't serialize $className");
-        }
+        \assert($className !== \Closure::class, "Can't serialize Closure via Stasis::from()");
 
         $rc = Reflect::getReflectionClass($className);
-        if ($rc->isAnonymous()) {
-            throw new SerializerError("Can't serialize anonymous classes");
-        }
-
-        if ($className === Stasis::class) {
-            throw new SerializerError('Should not directly serialize a Stasis class');
-        }
+        \assert(!$rc->isAnonymous(), "Can't serialize anonymous classes via Stasis::from()");
+        \assert($className !== Stasis::class, 'Should not directly serialize a Stasis class');
 
         $frozen = new Stasis(\get_class($source));
 

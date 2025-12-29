@@ -1,169 +1,478 @@
 <?php
+/**
+ * Benchmark: Closure Serialization Libraries
+ *
+ * Compares performance of three PHP closure serialization libraries:
+ * - Serializor (fubber/serializor)
+ * - Opis Closure (opis/closure)
+ * - Laravel Serializable Closure (laravel/serializable-closure)
+ *
+ * Usage: php benchmark.php
+ */
 
-require 'vendor/autoload.php'; // Adjust this to load Opis/Closure and Serializor
+require 'vendor/autoload.php';
 
-use Opis\Closure\SerializableClosure;
+use Laravel\SerializableClosure\SerializableClosure;
+use Maantje\Charts\Bar\Bar;
+use Maantje\Charts\Bar\BarGroup;
+use Maantje\Charts\Bar\Bars;
+use Maantje\Charts\Chart;
+use Maantje\Charts\YAxis;
 
-// Define iteration count per test case if needed
-$defaultIterations = 1000;
+// Initialize Opis v4
+Opis\Closure\Serializer::init();
+
+// Get version info from composer.lock
+function getInstalledVersion(string $package): string
+{
+    static $packages = null;
+    if ($packages === null) {
+        $lock = json_decode(file_get_contents(__DIR__ . '/composer.lock'), true);
+        $packages = [];
+        foreach ($lock['packages'] ?? [] as $p) {
+            $packages[$p['name']] = $p['version'];
+        }
+        foreach ($lock['packages-dev'] ?? [] as $p) {
+            $packages[$p['name']] = $p['version'];
+        }
+    }
+    return $packages[$package] ?? 'unknown';
+}
+
+// Get Serializor version from composer.json (this is the project itself)
+$composerJson = json_decode(file_get_contents(__DIR__ . '/composer.json'), true);
+$serializorVersion = $composerJson['version'] ?? trim(shell_exec('git describe --tags 2>/dev/null') ?: 'dev-master');
+
+$versions = [
+    'serializor' => $serializorVersion,
+    'opis' => getInstalledVersion('opis/closure'),
+    'laravel' => getInstalledVersion('laravel/serializable-closure'),
+];
+
+echo "Closure Serialization Benchmark\n";
+echo "================================\n";
+echo "PHP " . PHP_VERSION . " on " . PHP_OS . "\n";
+echo "Libraries:\n";
+echo "  - Serializor: {$versions['serializor']}\n";
+echo "  - Opis/Closure: {$versions['opis']}\n";
+echo "  - Laravel: {$versions['laravel']}\n";
+echo "\n";
+
 $iterations = [
-    'simple_closure' => 1000,
-    'closure_with_use' => 1000,
-    'complex_closure' => 1000,
+    'simple_closure' => 500,
+    'closure_with_use' => 500,
+    'complex_closure' => 500,
     'closure_with_object' => 500,
-    'complex_recursive_structure' => 500,
+    'closure_with_nested_closures' => 500,
+    'named_function' => 500,
+    'static_method' => 500,
+    'instance_method' => 500,
 ];
 
 $results = [
-    'opis' => [],
     'serializor' => [],
+    'opis' => [],
+    'laravel' => [],
 ];
 
-// Benchmark function with memory tracking
-function benchmark(callable $serializeFn, callable $unserializeFn, $closure, $iterations)
-{
-    // Measure serialize time and memory usage
-    $serializeStart = microtime(true);
-    $memoryBeforeSerialize = memory_get_usage();
+$colors = [
+    'serializor' => '#4CAF50',
+    'opis' => '#2196F3',
+    'laravel' => '#FF5722',
+];
 
-    for ($i = 0; $i < $iterations; $i++) {
-        $serialized = $serializeFn($closure);
+/**
+ * Generate unique closure files for cold benchmarking.
+ * Each file contains multiple unique closures to ensure no caching.
+ */
+function generateClosureFiles(int $numFiles, int $closuresPerFile, string $type, string $libName = ''): array
+{
+    $tmpDir = sys_get_temp_dir() . '/benchmark_closures_' . getmypid();
+    @mkdir($tmpDir, 0755, true);
+
+    // Use library name in namespace to avoid redeclaration between library runs
+    $nsPrefix = $libName ? ucfirst($libName) . '_' : '';
+
+    $files = [];
+    for ($f = 0; $f < $numFiles; $f++) {
+        $file = "$tmpDir/closures_{$type}_{$libName}_{$f}.php";
+
+        // Different structure for named functions and methods
+        if ($type === 'named_function') {
+            $code = "<?php\nnamespace BenchmarkFixtures_{$nsPrefix}{$f};\n\n";
+            // Define named functions first
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                $code .= "function benchFunc_{$id}(int \$x = {$id}): int {\n";
+                $code .= "    return \$x * 2 + {$id};\n";
+                $code .= "}\n\n";
+            }
+            // Return array of first-class callables
+            $code .= "return [\n";
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                $code .= "    benchFunc_{$id}(...),\n";
+            }
+            $code .= "];\n";
+        } elseif ($type === 'static_method') {
+            $code = "<?php\nnamespace BenchmarkFixtures_{$nsPrefix}{$f};\n\n";
+            // Define class with static methods
+            $code .= "class BenchClass_{$f} {\n";
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                $code .= "    public static function method_{$id}(int \$x = {$id}): int {\n";
+                $code .= "        return \$x * 3 + {$id};\n";
+                $code .= "    }\n\n";
+            }
+            $code .= "}\n\n";
+            // Return array of first-class callables
+            $code .= "return [\n";
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                $code .= "    BenchClass_{$f}::method_{$id}(...),\n";
+            }
+            $code .= "];\n";
+        } elseif ($type === 'instance_method') {
+            $code = "<?php\nnamespace BenchmarkFixtures_{$nsPrefix}{$f};\n\n";
+            // Define class with instance methods
+            $code .= "class BenchInstance_{$f} {\n";
+            $code .= "    private int \$multiplier;\n";
+            $code .= "    public function __construct(int \$m) { \$this->multiplier = \$m; }\n\n";
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                $code .= "    public function method_{$id}(int \$x = {$id}): int {\n";
+                $code .= "        return \$x * \$this->multiplier + {$id};\n";
+                $code .= "    }\n\n";
+            }
+            $code .= "}\n\n";
+            // Return array of first-class callables bound to instances
+            $code .= "\$obj = new BenchInstance_{$f}({$f});\n";
+            $code .= "return [\n";
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                $code .= "    \$obj->method_{$id}(...),\n";
+            }
+            $code .= "];\n";
+        } else {
+            // Anonymous closures
+            $code = "<?php\nreturn [\n";
+
+            for ($c = 0; $c < $closuresPerFile; $c++) {
+                $id = $f * $closuresPerFile + $c;
+                // Each closure on its own line(s) to avoid Serializor's same-line detection issues
+                switch ($type) {
+                    case 'simple':
+                        $code .= "    fn() => 'closure_{$id}',\n";
+                        break;
+                    case 'with_use':
+                        // Split across lines
+                        $code .= "    (function() {\n";
+                        $code .= "        \$v{$id} = {$id};\n";
+                        $code .= "        return fn() => \$v{$id};\n";
+                        $code .= "    })(),\n";
+                        break;
+                    case 'complex':
+                        $code .= "    (function() {\n";
+                        $code .= "        \$a{$id} = {$id};\n";
+                        $code .= "        \$b{$id} = " . ($id + 1) . ";\n";
+                        $code .= "        return fn() => \$a{$id} + \$b{$id};\n";
+                        $code .= "    })(),\n";
+                        break;
+                    case 'with_object':
+                        $code .= "    (function() {\n";
+                        $code .= "        \$obj{$id} = (object)['id' => {$id}];\n";
+                        $code .= "        return fn() => \$obj{$id}->id;\n";
+                        $code .= "    })(),\n";
+                        break;
+                    case 'nested':
+                        $code .= "    (function() {\n";
+                        $code .= "        \$n{$id} = fn(\$x) =>\n";
+                        $code .= "            fn(\$y) => \$x + \$y + {$id};\n";
+                        $code .= "        return fn() => \$n{$id}(1)(2);\n";
+                        $code .= "    })(),\n";
+                        break;
+                    default:
+                        $code .= "    fn() => {$id},\n";
+                }
+            }
+
+            $code .= "];\n";
+        }
+
+        file_put_contents($file, $code);
+        $files[] = $file;
     }
 
-    $memoryAfterSerialize = memory_get_usage();
-    $serializeEnd = microtime(true);
-    $serializeTime = $serializeEnd - $serializeStart;
-    $serializeMemory = $memoryAfterSerialize - $memoryBeforeSerialize;
+    return $files;
+}
 
-    // Measure unserialize time and memory usage
+function cleanupClosureFiles(): void
+{
+    $tmpDir = sys_get_temp_dir() . '/benchmark_closures_' . getmypid();
+    if (is_dir($tmpDir)) {
+        foreach (glob("$tmpDir/*.php") as $file) {
+            @unlink($file);
+        }
+        @rmdir($tmpDir);
+    }
+}
+
+function benchmark(callable $serializeFn, callable $unserializeFn, string $type, int $iterations, string $libName = ''): array
+{
+    // Generate unique closures from unique files - guarantees cold performance
+    $numFiles = 50;
+    $closuresPerFile = (int) ceil($iterations / $numFiles);
+    // Include library name in generation to avoid function redeclaration conflicts
+    $files = generateClosureFiles($numFiles, $closuresPerFile, $type, $libName);
+
+    // Load all closures
+    $closures = [];
+    foreach ($files as $file) {
+        $closures = array_merge($closures, require $file);
+    }
+    $closures = array_slice($closures, 0, $iterations);
+
+    // Measure serialize (each closure is unique - cold)
+    $serializeStart = microtime(true);
+    $serializedData = [];
+    foreach ($closures as $i => $closure) {
+        $serializedData[$i] = $serializeFn($closure);
+    }
+    $serializeTime = microtime(true) - $serializeStart;
+
+    // Measure unserialize (each serialized closure is unique - cold)
     $unserializeStart = microtime(true);
-    $memoryBeforeUnserialize = memory_get_usage();
-
-    for ($i = 0; $i < $iterations; $i++) {
+    foreach ($serializedData as $serialized) {
         $unserialized = $unserializeFn($serialized);
     }
-
-    $memoryAfterUnserialize = memory_get_usage();
-    $unserializeEnd = microtime(true);
-    $unserializeTime = $unserializeEnd - $unserializeStart;
-    $unserializeMemory = $memoryAfterUnserialize - $memoryBeforeUnserialize;
+    $unserializeTime = microtime(true) - $unserializeStart;
 
     return [
-        'serialize_time' => $serializeTime,
-        'unserialize_time' => $unserializeTime,
-        'serialize_memory' => $serializeMemory,
-        'unserialize_memory' => $unserializeMemory,
+        'serialize_time' => $serializeTime * 1000,
+        'unserialize_time' => $unserializeTime * 1000,
+        'iterations' => $iterations,
     ];
 }
 
-// Test cases
-$testCases = [
-    'simple_closure' => function () {
-        return function () {
-            return 'Simple closure';
-        };
-    },
-    'closure_with_use' => function () {
-        $value = 42;
-        return function () use ($value) {
-            return $value;
-        };
-    },
-    'complex_closure' => function () {
-        $a = 10;
-        $b = 20;
-        return function () use ($a, $b) {
-            return $a + $b;
-        };
-    },
-    'closure_with_object' => function () {
-        $object = (object) [
-            'property' => 'Hello'
-        ];
-        return function () use ($object) {
-            return $object->property;
-        };
-    },
-    'complex_recursive_structure' => function () {
-        $array = [];
-        $array[] = &$array;
-        $array[] = function () use (&$array) {
-            return count($array);
-        };
-        return function () use ($array) {
-            return $array[0][2]();
-        };
-    },
-    'closure_with_nested_closures' => function () {
-        $nestedClosure = function ($x) {
-            return function ($y) use ($x) {
-                return $x + $y;
-            };
-        };
-        return function () use ($nestedClosure) {
-            return $nestedClosure(10)(20);
-        };
-    }
+// Map test case names to closure types for file generation
+$testCaseTypes = [
+    'simple_closure' => 'simple',
+    'closure_with_use' => 'with_use',
+    'complex_closure' => 'complex',
+    'closure_with_object' => 'with_object',
+    'closure_with_nested_closures' => 'nested',
+    'named_function' => 'named_function',
+    'static_method' => 'static_method',
+    'instance_method' => 'instance_method',
 ];
 
-// Run benchmarks for each test case
-foreach ($testCases as $caseName => $testClosureFactory) {
-    // Get the number of iterations for this test case
-    $numIterations = $iterations[$caseName] ?? $defaultIterations;
+// Libraries configuration
+$libraries = [
+    'serializor' => [
+        'serialize' => fn($c) => Serializor::serialize($c),
+        'unserialize' => fn($s) => Serializor::unserialize($s),
+    ],
+    'opis' => [
+        'serialize' => fn($c) => Opis\Closure\serialize($c),
+        'unserialize' => fn($s) => Opis\Closure\unserialize($s),
+    ],
+    'laravel' => [
+        'serialize' => fn($c) => serialize(new SerializableClosure($c)),
+        'unserialize' => fn($s) => unserialize($s)->getClosure(),
+    ],
+];
 
-    // Generate the closure
-    $testClosure = $testClosureFactory();
+echo "Running benchmarks (cold - unique closures from unique files)...\n\n";
 
-    echo "Serializor ($caseName)...\n";
-    // Serializor benchmark
-    try {
-        $serializorResults = benchmark(
-            fn($closure) => Serializor::serialize($closure),
-            fn($serialized) => Serializor::unserialize($serialized),
-            $testClosure,
-            $numIterations
-        );
+foreach ($testCaseTypes as $caseName => $closureType) {
+    $numIterations = $iterations[$caseName] ?? 1000;
 
-        // Store results for Serializor
-        $results['serializor'][$caseName] = [
-            'serialize_time' => $serializorResults['serialize_time'],
-            'unserialize_time' => $serializorResults['unserialize_time'],
-            'serialize_memory' => $serializorResults['serialize_memory'],
-            'unserialize_memory' => $serializorResults['unserialize_memory'],
-        ];
-    } catch (Throwable $e) {
-        echo "Error in Serializor ($caseName): " . $e->getMessage() . "\n";
+    echo "  $caseName ($numIterations iterations)\n";
+
+    foreach ($libraries as $libName => $lib) {
+        try {
+            $result = benchmark(
+                $lib['serialize'],
+                $lib['unserialize'],
+                $closureType,
+                $numIterations,
+                $libName
+            );
+            $results[$libName][$caseName] = $result;
+            printf("    %s: %.2fms serialize, %.2fms unserialize\n",
+                $libName,
+                $result['serialize_time'],
+                $result['unserialize_time']
+            );
+        } catch (Throwable $e) {
+            echo "    $libName: ERROR - " . $e->getMessage() . "\n";
+        }
     }
-
-    // Skip certain cases for Opis/Closure (e.g., recursive structures)
-    if ($caseName === 'complex_recursive_structure') {
-        echo "Skipping complex_recursive_structure for Opis...\n";
-        continue;
-    }
-
-    echo "OPIS ($caseName)...\n";
-    // Opis/Closure benchmark
-    try {
-        $opisResults = benchmark(
-            fn($closure) => serialize(new SerializableClosure($closure)),
-            fn($serialized) => unserialize($serialized)->getClosure(),
-            $testClosure,
-            $numIterations
-        );
-
-        // Store results for Opis
-        $results['opis'][$caseName] = [
-            'serialize_time' => $opisResults['serialize_time'],
-            'unserialize_time' => $opisResults['unserialize_time'],
-            'serialize_memory' => $opisResults['serialize_memory'],
-            'unserialize_memory' => $opisResults['unserialize_memory'],
-        ];
-    } catch (Throwable $e) {
-        echo "Error in Opis ($caseName): " . $e->getMessage() . "\n";
-    }
+    echo "\n";
 }
 
-// Write results to JSON file
-file_put_contents('benchmark_results.json', json_encode($results, JSON_PRETTY_PRINT));
+// Cleanup temp files
+cleanupClosureFiles();
 
-echo "Benchmark complete. Results saved to benchmark_results.json\n";
+// Save JSON results with metadata
+$output = [
+    'meta' => [
+        'php_version' => PHP_VERSION,
+        'os' => PHP_OS,
+        'date' => date('Y-m-d H:i:s'),
+        'versions' => $versions,
+    ],
+    'results' => $results,
+];
+file_put_contents('benchmark_results.json', json_encode($output, JSON_PRETTY_PRINT));
+echo "Results saved to benchmark_results.json\n\n";
+
+// Generate charts
+echo "Generating charts...\n";
+
+function generateChart(array $results, string $metric, string $title, array $colors): string
+{
+    $testCases = array_keys($results['serializor']);
+    $maxValue = 0;
+
+    // Find max value for scaling
+    foreach ($results as $libResults) {
+        foreach ($libResults as $caseResult) {
+            if (isset($caseResult[$metric])) {
+                $maxValue = max($maxValue, $caseResult[$metric]);
+            }
+        }
+    }
+
+    $barGroups = [];
+    foreach ($testCases as $caseName) {
+        $bars = [];
+        foreach (['serializor', 'opis', 'laravel'] as $lib) {
+            $value = $results[$lib][$caseName][$metric] ?? 0;
+            $bars[] = new Bar(
+                value: $value,
+                color: $colors[$lib],
+                radius: 4,
+            );
+        }
+        $barGroups[] = new BarGroup(
+            name: str_replace('_', ' ', $caseName),
+            bars: $bars,
+        );
+    }
+
+    $chart = new Chart(
+        width: 900,
+        height: 400,
+        yAxis: new YAxis(
+            minValue: 0,
+            maxValue: ceil($maxValue * 1.1),
+            title: $metric === 'serialize_time' || $metric === 'unserialize_time' ? 'Time (ms)' : 'Memory (bytes)',
+        ),
+        series: [new Bars(bars: $barGroups)],
+    );
+
+    return $chart->render();
+}
+
+// Generate serialization time chart
+$serializeChart = generateChart($results, 'serialize_time', 'Serialization Time', $colors);
+file_put_contents('docs/serialization-benchmark.svg', $serializeChart);
+echo "  Created docs/serialization-benchmark.svg\n";
+
+// Generate unserialization time chart
+$unserializeChart = generateChart($results, 'unserialize_time', 'Unserialization Time', $colors);
+file_put_contents('docs/unserialization-benchmark.svg', $unserializeChart);
+echo "  Created docs/unserialization-benchmark.svg\n";
+
+// Generate legend
+$legend = <<<SVG
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="40">
+  <rect x="10" y="10" width="20" height="20" fill="{$colors['serializor']}" rx="4"/>
+  <text x="35" y="25" font-family="sans-serif" font-size="14">Serializor</text>
+  <rect x="130" y="10" width="20" height="20" fill="{$colors['opis']}" rx="4"/>
+  <text x="155" y="25" font-family="sans-serif" font-size="14">Opis/Closure</text>
+  <rect x="270" y="10" width="20" height="20" fill="{$colors['laravel']}" rx="4"/>
+  <text x="295" y="25" font-family="sans-serif" font-size="14">Laravel</text>
+</svg>
+SVG;
+file_put_contents('docs/benchmark-legend.svg', $legend);
+echo "  Created docs/benchmark-legend.svg\n";
+
+// Generate BENCHMARKS.md
+echo "  Generating BENCHMARKS.md...\n";
+
+$md = "<!-- This file is auto-generated by benchmark.php. Do not edit manually. -->\n";
+$md .= "# Benchmark Results\n\n";
+$md .= "**Last updated:** " . date('Y-m-d H:i:s') . "\n\n";
+$md .= "**Environment:**\n";
+$md .= "- PHP " . PHP_VERSION . " on " . PHP_OS . "\n";
+$md .= "- Serializor: {$versions['serializor']}\n";
+$md .= "- Opis/Closure: {$versions['opis']}\n";
+$md .= "- Laravel Serializable Closure: {$versions['laravel']}\n\n";
+
+$md .= "## Summary\n\n";
+$md .= "| Test Case | Serializor | Opis | Laravel | Winner (serialize) |\n";
+$md .= "|-----------|------------|------|---------|--------------------|\n";
+
+foreach ($results['serializor'] as $caseName => $result) {
+    $serializorTime = $result['serialize_time'] ?? null;
+    $opisTime = $results['opis'][$caseName]['serialize_time'] ?? null;
+    $laravelTime = $results['laravel'][$caseName]['serialize_time'] ?? null;
+
+    $serializorStr = $serializorTime !== null ? sprintf('%.1fms', $serializorTime) : 'N/A';
+    $opisStr = $opisTime !== null ? sprintf('%.1fms', $opisTime) : 'N/A';
+    $laravelStr = $laravelTime !== null ? sprintf('%.1fms', $laravelTime) : 'ERROR';
+
+    // Determine winner
+    $times = array_filter([
+        'Serializor' => $serializorTime,
+        'Opis' => $opisTime,
+        'Laravel' => $laravelTime,
+    ], fn($t) => $t !== null);
+    $winner = $times ? array_keys($times, min($times))[0] : 'N/A';
+
+    $displayName = str_replace('_', ' ', $caseName);
+    $md .= "| {$displayName} | {$serializorStr} | {$opisStr} | {$laravelStr} | {$winner} |\n";
+}
+
+$md .= "\n## Serialization Time\n\n";
+$md .= "![Serialization Benchmark](docs/serialization-benchmark.svg)\n\n";
+
+$md .= "## Unserialization Time\n\n";
+$md .= "![Unserialization Benchmark](docs/unserialization-benchmark.svg)\n\n";
+
+$md .= "![Legend](docs/benchmark-legend.svg)\n\n";
+
+$md .= "## Detailed Results\n\n";
+
+foreach ($results['serializor'] as $caseName => $result) {
+    $displayName = str_replace('_', ' ', $caseName);
+    $md .= "### " . ucwords($displayName) . "\n\n";
+    $md .= "| Library | Serialize | Unserialize | Total |\n";
+    $md .= "|---------|-----------|-------------|-------|\n";
+
+    foreach (['serializor', 'opis', 'laravel'] as $lib) {
+        $libResult = $results[$lib][$caseName] ?? null;
+        if ($libResult && isset($libResult['serialize_time'])) {
+            $serialize = sprintf('%.2fms', $libResult['serialize_time']);
+            $unserialize = sprintf('%.2fms', $libResult['unserialize_time']);
+            $total = sprintf('%.2fms', $libResult['serialize_time'] + $libResult['unserialize_time']);
+        } else {
+            $serialize = 'ERROR';
+            $unserialize = 'ERROR';
+            $total = 'ERROR';
+        }
+        $libName = ucfirst($lib);
+        $md .= "| {$libName} | {$serialize} | {$unserialize} | {$total} |\n";
+    }
+    $md .= "\n";
+}
+
+$md .= "---\n\n";
+$md .= "*Generated by `php benchmark.php`*\n";
+
+file_put_contents('BENCHMARKS.md', $md);
+echo "  Created BENCHMARKS.md\n";
+
+echo "\nBenchmark complete!\n";

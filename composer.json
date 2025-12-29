@@ -9,7 +9,10 @@
     ],
     "type": "library",
     "require-dev": {
-        "pestphp/pest": "^1.18"
+        "pestphp/pest": "^1.18",
+        "opis/closure": "^4.4",
+        "laravel/serializable-closure": "^2.0",
+        "maantje/charts": "^0.8.1"
     },
     "license": "MIT",
     "autoload": {

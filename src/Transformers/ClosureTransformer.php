@@ -25,8 +25,14 @@ use WeakMap;
 class ClosureTransformer implements TransformerInterface
 {
     private static array $codeMakers = [];
-    private static array $tokenCache = [];
     private static array $functionCache = [];
+    /**
+     * Pre-processed file info cache: tokens with magic constants replaced,
+     * and namespace/use statement ranges pre-computed.
+     *
+     * @var array<string, array{tokens: PhpToken[], namespaces: array}>
+     */
+    private static array $fileInfoCache = [];
     /**
      * @var null|WeakMap<Closure|Stasis,Closure|Stasis>
      */
@@ -65,58 +71,55 @@ class ClosureTransformer implements TransformerInterface
         }
 
         $rf = new ReflectionFunction($value);
-        $frozen = new Stasis(Closure::class);
-
+        $name = $rf->getName();
         $closureThis = $rf->getClosureThis();
-        $closureScopeClass = $rf->getClosureScopeClass();
         $closureCalledClass = $rf->getClosureCalledClass();
 
-        $frozen->p['name'] = $rf->getName();
-        $frozen->p['hash'] = Reflect::getHash($rf);
-        if ($closureThis) {
-            $frozen->p['callable'] = [&$closureThis, $rf->getName()];
-        } elseif ($closureCalledClass) {
-            $frozen->p['callable'] = [$closureCalledClass->getName(), $rf->getName()];
-        } elseif (\function_exists($rf->getName())) {
-            $frozen->p['callable'] = $rf->getName();
-        } else {
+        // Fast path: named functions and methods that exist in the codebase
+        // Only store the callable reference - no source extraction needed
+        if ($closureThis !== null) {
+            $rc = Reflect::getReflectionClass($closureThis);
+            if (self::resolveMethod($rc, $name)) {
+                $frozen = new Stasis(Closure::class);
+                $frozen->p['callable'] = [$closureThis, $name];
+                self::$transformedObjects[$value] = $frozen;
+                self::$transformedObjects[$frozen] = $value;
+                return $frozen;
+            }
+        } elseif ($closureCalledClass !== null) {
+            if (self::resolveMethod($closureCalledClass, $name)) {
+                $frozen = new Stasis(Closure::class);
+                $frozen->p['callable'] = [$closureCalledClass->getName(), $name];
+                self::$transformedObjects[$value] = $frozen;
+                self::$transformedObjects[$frozen] = $value;
+                return $frozen;
+            }
+        } elseif (\function_exists($name)) {
+            $frozen = new Stasis(Closure::class);
+            $frozen->p['callable'] = $name;
+            self::$transformedObjects[$value] = $frozen;
+            self::$transformedObjects[$frozen] = $value;
+            return $frozen;
+        } elseif (!$rf->isUserDefined()) {
+            // Native function without a name we can call - store null callable
+            $frozen = new Stasis(Closure::class);
             $frozen->p['callable'] = null;
-        }
-        $frozen->p['this'] = &$closureThis;
-        $frozen->p['scope_class'] = $closureScopeClass?->getName();
-        $frozen->p['called_class'] = $closureCalledClass?->getName();
-        $frozen->p['namespace'] = $rf->getNamespaceName();
-
-        /**
-         * We can't serialize the code of native functions
-         */
-        if (!$rf->isUserDefined()) {
             self::$transformedObjects[$value] = $frozen;
             self::$transformedObjects[$frozen] = $value;
             return $frozen;
         }
 
-        /**
-         * Static functions declared on classes or functions declared on a class
-         * is not serialized with source code.
-         */
-        if ($closureThis !== null) {
-            $rc = Reflect::getReflectionClass($closureThis);
-            if (self::resolveMethod($rc, $rf->getName())) {
-                self::$transformedObjects[$value] = $frozen;
-                self::$transformedObjects[$frozen] = $value;
-                return $frozen;
-            }
-        }
-        if ($closureCalledClass !== null) {
-            $rm = self::resolveMethod($closureCalledClass, $rf->getName());
-            if ($rm && $rm->isStatic()) {
-                $frozen->p['callable'] = [$closureCalledClass->getName(), $rf->getName()];
-                self::$transformedObjects[$value] = $frozen;
-                self::$transformedObjects[$frozen] = $value;
-                return $frozen;
-            }
-        }
+        // Full path: anonymous closures need source extraction
+        $frozen = new Stasis(Closure::class);
+        $closureScopeClass = $rf->getClosureScopeClass();
+
+        $frozen->p['name'] = $name;
+        $frozen->p['hash'] = Reflect::getHash($rf);
+        $frozen->p['callable'] = null;
+        $frozen->p['this'] = $closureThis;
+        $frozen->p['scope_class'] = $closureScopeClass?->getName();
+        $frozen->p['called_class'] = $closureCalledClass?->getName();
+        $frozen->p['namespace'] = $rf->getNamespaceName();
 
         self::$transformedObjects[$value] = $frozen;
         self::$transformedObjects[$frozen] = $value;
@@ -130,6 +133,9 @@ class ClosureTransformer implements TransformerInterface
         if (!$usedThis) {
             $frozen->p['this'] = null;
         }
+        if (!$usedStatic && !$usedThis) {
+            $frozen->p['scope_class'] = null;
+        }
         $frozen->p['is_static_function'] = $isStaticFunction;
         $frozen->p['use_statements'] = $useStatements;
         return $frozen;
@@ -137,9 +143,7 @@ class ClosureTransformer implements TransformerInterface
 
     public function resolve(mixed $value): mixed
     {
-        if (!($value instanceof Stasis) || $value->getClassName() !== Closure::class) {
-            throw new SerializerError("Can't resolve " . get_debug_type($value));
-        }
+        \assert($value instanceof Stasis && $value->getClassName() === Closure::class, "Can't resolve " . get_debug_type($value));
 
         if (isset(self::$transformedObjects[$value])) {
             return self::$transformedObjects[$value];
@@ -168,30 +172,42 @@ class ClosureTransformer implements TransformerInterface
         }
 
         $useStatements = implode("\n", $filteredUseStatements);
+        $isSimple = empty($value->p['use']) && $value->p['this'] === null && $value->p['scope_class'] === null;
 
-        $code = <<<PHP
-            namespace {$value->p['namespace']} {
-                {$useStatements}
-                return static function(array &\$useVars, ?object \$thisObject, ?string \$scopeClass): \Closure {
-                    extract(\$useVars, \EXTR_OVERWRITE | \EXTR_REFS);
-                    return \Closure::bind({$value->p['code']}, \$thisObject, \$scopeClass);
-                };
+        if ($isSimple) {
+            // Fast path: no use vars, no $this, no scope - just return the closure directly
+            $code = "namespace {$value->p['namespace']} { {$useStatements} return {$value->p['code']}; }";
+            $hash = \md5($code);
+            if (!isset(self::$codeMakers[$hash])) {
+                ClosureStream::register();
+                self::$codeMakers[$hash] = require(ClosureStream::STREAM_PROTO . '://' . $code);
             }
-            PHP;
-
-        $hash = md5($code);
-        if (!isset(self::$codeMakers[$hash])) {
-            ClosureStream::register();
-            self::$codeMakers[$hash] = require(ClosureStream::STREAM_PROTO . '://' . $code);
-        }
-
-        if ($this->resolveUseVariablesFunc !== null) {
-            $use = ($this->resolveUseVariablesFunc)($value->p['use']);
+            $result = self::$codeMakers[$hash];
         } else {
-            $use = $value->p['use'];
-        }
+            $code = <<<PHP
+                namespace {$value->p['namespace']} {
+                    {$useStatements}
+                    return static function(array &\$useVars, ?object \$thisObject, ?string \$scopeClass): \Closure {
+                        extract(\$useVars, \EXTR_OVERWRITE | \EXTR_REFS);
+                        return \Closure::bind({$value->p['code']}, \$thisObject, \$scopeClass);
+                    };
+                }
+                PHP;
 
-        $result = self::$codeMakers[$hash]($use, $value->p['this'], $value->p['scope_class']);
+            $hash = \md5($code);
+            if (!isset(self::$codeMakers[$hash])) {
+                ClosureStream::register();
+                self::$codeMakers[$hash] = require(ClosureStream::STREAM_PROTO . '://' . $code);
+            }
+
+            if ($this->resolveUseVariablesFunc !== null) {
+                $use = ($this->resolveUseVariablesFunc)($value->p['use']);
+            } else {
+                $use = $value->p['use'];
+            }
+
+            $result = self::$codeMakers[$hash]($use, $value->p['this'], $value->p['scope_class']);
+        }
 
         self::$transformedObjects[$value] = $result;
         self::$transformedObjects[$result] = $value;
@@ -245,96 +261,77 @@ class ClosureTransformer implements TransformerInterface
         if (\str_contains($sourceFile, 'eval()\'d')) {
             throw new RuntimeException("Can't serialize a closure that was generated with eval()");
         }
-        if (isset(self::$tokenCache[$sourceFile])) {
-            $tokens = self::$tokenCache[$sourceFile];
-        } else {
-            $tokens = self::$tokenCache[$sourceFile] = PhpToken::tokenize(file_get_contents($sourceFile));
-        }
 
-        // Prepare magic constant replacements
-        $closureScopeClass = $rf->getClosureScopeClass();
-        $magicDir = \var_export(\dirname($sourceFile), true);
-        $magicFile = \var_export($sourceFile, true);
-        $magicClass = \var_export($closureScopeClass?->getName() ?? '', true);
+        // Get preprocessed file info (cached per file)
+        $fileInfo = self::getFileInfo($sourceFile);
+        $tokens = $fileInfo['tokens'];
+        $tokenCount = count($tokens);
         $closureStartLine = $rf->getStartLine();
 
-        // Extract namespace from tokens (ReflectionFunction::getNamespaceName() doesn't work for closures)
-        $namespace = '';
-        foreach ($tokens as $idx => $token) {
-            if ($token->line >= $closureStartLine) {
-                break;
-            }
-            if ($token->id === \T_NAMESPACE) {
-                // Get the namespace name from following tokens
-                $namespace = '';
-                for ($i = $idx + 1; $i < count($tokens); $i++) {
-                    $t = $tokens[$i];
-                    if ($t->id === \T_NAME_QUALIFIED || $t->id === \T_STRING) {
-                        $namespace = $t->text;
-                        break;
-                    }
-                    if ($t->text === ';' || $t->text === '{') {
-                        break;
-                    }
-                }
-            }
-        }
+        // Get namespace and use statements from preprocessed data
+        $nsInfo = self::findNamespaceForLine($fileInfo['namespaces'], $closureStartLine);
+        $namespace = $nsInfo['ns'] ?? '';
+        $useStatements = $nsInfo['useStatements'] ?? [];
 
-        // Use the original closure's name for __FUNCTION__ (preserves {closure:path:line} format)
+        // Prepare closure-specific magic constants
+        $closureScopeClass = $rf->getClosureScopeClass();
+        $magicClass = \var_export($closureScopeClass?->getName() ?? '', true);
         $magicFunction = \var_export($rf->getName(), true);
         $magicMethod = \var_export(
             ($closureScopeClass ? $closureScopeClass->getName() . '::' : '') . $rf->getName(),
             true
         );
 
+        // Use binary search to find the starting position
+        $startIdx = self::findLineOffset($tokens, $closureStartLine);
+        if ($startIdx < 0) {
+            throw new RuntimeException("Could not find closure start line {$closureStartLine} in {$sourceFile}");
+        }
+
         // Check for multiple closures on the same line and disambiguate or throw
-        $closuresOnLine = self::findClosuresOnLine($tokens, $closureStartLine);
+        $closuresOnLine = self::findClosuresOnLine($tokens, $closureStartLine, $startIdx);
         $targetClosureIdx = self::matchClosureBySignature($closuresOnLine, $rf);
         $targetStartIdx = $targetClosureIdx !== null ? $closuresOnLine[$targetClosureIdx]['startIdx'] : null;
 
+        // Capture closure tokens starting from binary search position
         $capture = false;
         $capturedTokens = [];
         $stackDepth = 0;
         $stack = [];
-        $useStatements = [];
-        foreach ($tokens as $idx => $token) {
-            if ($token->id === \T_NAMESPACE) {
-                $useStatements = [];
-            }
-            if ($token->id === \T_STRING || $token->id === \T_NAME_QUALIFIED || $token->id === \T_NAME_FULLY_QUALIFIED) {
-                if ($tokens[$idx - 2]->id === \T_USE) {
-                    $useStatements[] = self::extractStatement($tokens, $idx - 2);
-                } elseif ($tokens[$idx - 2]->id === \T_FUNCTION && $tokens[$idx - 4]->id === \T_USE) {
-                    $useStatements[] = self::extractStatement($tokens, $idx - 4);
-                }
 
+        for ($idx = $startIdx; $idx < $tokenCount; $idx++) {
+            $token = $tokens[$idx];
+
+            // Stop if we've passed the closure's start line without capturing
+            if (!$capture && $token->line > $closureStartLine) {
+                break;
             }
+
             if (!$capture) {
-                if ($token->line === $rf->getStartLine()) {
-                    // If we have a specific target index from disambiguation, only start at that index
-                    if ($targetStartIdx !== null && $idx !== $targetStartIdx) {
-                        continue;
+                if ($token->line !== $closureStartLine) {
+                    continue;
+                }
+                // If we have a specific target index from disambiguation, only start at that index
+                if ($targetStartIdx !== null && $idx !== $targetStartIdx) {
+                    continue;
+                }
+                if ($token->id === \T_STATIC) {
+                    // Check for static function/fn - skip ignorable tokens to find the next keyword
+                    $nextNonIgnorable = $idx + 1;
+                    while ($nextNonIgnorable < $tokenCount && $tokens[$nextNonIgnorable]->isIgnorable()) {
+                        $nextNonIgnorable++;
                     }
-                    if ($token->id === \T_STATIC) {
-                        // Check for static function/fn - skip ignorable tokens to find the next keyword
-                        $nextNonIgnorable = $idx + 1;
-                        while ($nextNonIgnorable < count($tokens) && $tokens[$nextNonIgnorable]->isIgnorable()) {
-                            $nextNonIgnorable++;
-                        }
-                        if ($nextNonIgnorable < count($tokens) && $tokens[$nextNonIgnorable]->id === \T_FUNCTION) {
-                            $capture = true;
-                            $isStaticFunction = true;
-                        } elseif ($nextNonIgnorable < count($tokens) && $tokens[$nextNonIgnorable]->id === \T_FN) {
-                            $capture = true;
-                            $isStaticFunction = true;
-                        } else {
-                            continue;
-                        }
-                    } elseif ($token->id === T_FUNCTION || $token->id === \T_FN) {
+                    if ($nextNonIgnorable < $tokenCount && $tokens[$nextNonIgnorable]->id === \T_FUNCTION) {
                         $capture = true;
+                        $isStaticFunction = true;
+                    } elseif ($nextNonIgnorable < $tokenCount && $tokens[$nextNonIgnorable]->id === \T_FN) {
+                        $capture = true;
+                        $isStaticFunction = true;
                     } else {
                         continue;
                     }
+                } elseif ($token->id === T_FUNCTION || $token->id === \T_FN) {
+                    $capture = true;
                 } else {
                     continue;
                 }
@@ -371,11 +368,9 @@ class ClosureTransformer implements TransformerInterface
         }
         $codes = [];
         foreach ($capturedTokens as $token) {
-            // Replace magic constants with their actual values
+            // Replace closure-specific magic constants with their actual values
+            // Note: T_DIR, T_FILE, T_LINE are already replaced in getFileInfo()
             $text = match ($token->id) {
-                \T_LINE => (string) $token->line,
-                \T_DIR => $magicDir,
-                \T_FILE => $magicFile,
                 \T_CLASS_C => $magicClass,
                 \T_FUNC_C => $magicFunction,
                 \T_METHOD_C => $magicMethod,
@@ -393,39 +388,6 @@ class ClosureTransformer implements TransformerInterface
         ];
 
         return self::$functionCache[$hash]['code'];
-    }
-
-    /**
-     * Find the first token on the specified line.
-     *
-     * @param PhpToken[] $tokens The array of PhpToken objects
-     * @param int $line The line number to search for
-     * @return int The offset in the tokens array where the line starts
-     * @throws RuntimeException If the line number is not found in the tokens array
-     */
-    private static function findLineOffset(array &$tokens, int $line): int
-    {
-        $low = 0;
-        $high = count($tokens) - 1;
-
-        while ($low <= $high) {
-            $mid = ($low + $high) >> 1;  // Equivalent to (int)(($low + $high) / 2) but faster
-            $token = $tokens[$mid];
-
-            if ($token->line > $line) {
-                $high = $mid - 1;
-            } elseif ($token->line < $line) {
-                $low = $mid + 1;
-            } else {
-                // We've found a token on the desired line, now search backwards to find the first token on that line.
-                while ($mid > 0 && $tokens[$mid - 1]->line === $line) {
-                    $mid--;
-                }
-                return $mid;
-            }
-        }
-
-        throw new RuntimeException("Token offset for line {$line} could not be found.");
     }
 
     private static function extractStatement(array &$tokens, int $startIndex): string {
@@ -450,12 +412,12 @@ class ClosureTransformer implements TransformerInterface
      * @param int $line
      * @return array Array of ['startIdx' => int, 'params' => string[], 'useVars' => string[]]
      */
-    private static function findClosuresOnLine(array &$tokens, int $line): array
+    private static function findClosuresOnLine(array &$tokens, int $line, int $startIdx = 0): array
     {
         $closures = [];
         $tokenCount = count($tokens);
 
-        for ($i = 0; $i < $tokenCount; $i++) {
+        for ($i = $startIdx; $i < $tokenCount; $i++) {
             $token = $tokens[$i];
             if ($token->line !== $line) {
                 if ($token->line > $line) {
@@ -656,5 +618,140 @@ class ClosureTransformer implements TransformerInterface
             "Found closures:\n" . implode("\n", $details) . "\n" .
             "Tip: Place each closure on its own line, or use distinct parameter names."
         );
+    }
+
+    /**
+     * Preprocess a file: tokenize, replace magic constants, and extract namespace/use info.
+     * Results are cached per file.
+     *
+     * @return array{tokens: PhpToken[], namespaces: array}
+     */
+    private static function getFileInfo(string $sourceFile): array
+    {
+        if (isset(self::$fileInfoCache[$sourceFile])) {
+            return self::$fileInfoCache[$sourceFile];
+        }
+
+        $tokens = PhpToken::tokenize(file_get_contents($sourceFile));
+        $count = count($tokens);
+
+        // Pre-compute magic constant values
+        $magicDir = \var_export(\dirname($sourceFile), true);
+        $magicFile = \var_export($sourceFile, true);
+
+        // Extract namespace ranges and use statements, and replace magic constants
+        $namespaces = [];
+        $currentNs = '';
+        $currentNsStart = 1;
+        $currentUseStatements = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            // Replace file-level magic constants inline
+            if ($token->id === \T_DIR) {
+                $tokens[$i] = new PhpToken(\T_CONSTANT_ENCAPSED_STRING, $magicDir, $token->line, $token->pos);
+            } elseif ($token->id === \T_FILE) {
+                $tokens[$i] = new PhpToken(\T_CONSTANT_ENCAPSED_STRING, $magicFile, $token->line, $token->pos);
+            } elseif ($token->id === \T_LINE) {
+                $tokens[$i] = new PhpToken(\T_LNUMBER, (string) $token->line, $token->line, $token->pos);
+            }
+
+            if ($token->id === \T_NAMESPACE) {
+                // Save previous namespace range
+                if ($currentNs !== '' || !empty($currentUseStatements)) {
+                    $namespaces[] = [
+                        'ns' => $currentNs,
+                        'useStatements' => $currentUseStatements,
+                        'startLine' => $currentNsStart,
+                        'endLine' => $token->line - 1,
+                    ];
+                }
+                // Extract new namespace name
+                $currentNs = '';
+                for ($j = $i + 1; $j < $count; $j++) {
+                    $t = $tokens[$j];
+                    if ($t->id === \T_NAME_QUALIFIED || $t->id === \T_STRING) {
+                        $currentNs = $t->text;
+                        break;
+                    }
+                    if ($t->text === ';' || $t->text === '{') {
+                        break;
+                    }
+                }
+                $currentNsStart = $token->line;
+                $currentUseStatements = [];
+            } elseif ($token->id === \T_USE && $i >= 2) {
+                // Check if this is a use statement (not closure use)
+                $isClosureUse = false;
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if (!$tokens[$j]->isIgnorable()) {
+                        if ($tokens[$j]->text === '(') {
+                            $isClosureUse = true;
+                        }
+                        break;
+                    }
+                }
+                if (!$isClosureUse) {
+                    $currentUseStatements[] = self::extractStatement($tokens, $i);
+                }
+            }
+        }
+
+        // Save final namespace range
+        $lastLine = $tokens[$count - 1]->line ?? PHP_INT_MAX;
+        $namespaces[] = [
+            'ns' => $currentNs,
+            'useStatements' => $currentUseStatements,
+            'startLine' => $currentNsStart,
+            'endLine' => $lastLine,
+        ];
+
+        self::$fileInfoCache[$sourceFile] = ['tokens' => $tokens, 'namespaces' => $namespaces];
+        return self::$fileInfoCache[$sourceFile];
+    }
+
+    /**
+     * Find the namespace info for a given line number.
+     */
+    private static function findNamespaceForLine(array $namespaces, int $line): array
+    {
+        foreach ($namespaces as $ns) {
+            if ($line >= $ns['startLine'] && $line <= $ns['endLine']) {
+                return $ns;
+            }
+        }
+        return ['ns' => '', 'useStatements' => []];
+    }
+
+    /**
+     * Find the first token on the specified line using binary search.
+     *
+     * @param PhpToken[] $tokens
+     * @return int The offset where the line starts, or -1 if not found
+     */
+    private static function findLineOffset(array $tokens, int $line): int
+    {
+        $low = 0;
+        $high = count($tokens) - 1;
+
+        while ($low <= $high) {
+            $mid = ($low + $high) >> 1;
+            $tokenLine = $tokens[$mid]->line;
+
+            if ($tokenLine > $line) {
+                $high = $mid - 1;
+            } elseif ($tokenLine < $line) {
+                $low = $mid + 1;
+            } else {
+                // Found a token on the line, walk backward to find first token on this line
+                while ($mid > 0 && $tokens[$mid - 1]->line === $line) {
+                    $mid--;
+                }
+                return $mid;
+            }
+        }
+
+        return -1;
     }
 }

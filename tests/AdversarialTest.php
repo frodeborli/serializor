@@ -566,3 +566,19 @@ test('mixed weak/strong reference graph', function () {
     // weak_only should be dead (no strong reference)
     expect($restored['weak_only']->get())->toBeNull();
 });
+
+test('closure capturing self-referencing array with nested closure', function () {
+    $array = [];
+    $array[] = &$array;
+    $array[] = function () use (&$array) {
+        return count($array);
+    };
+    $closure = fn() => $array[1]();
+
+    $codec = new Codec('secret');
+    $serialized = $codec->serialize($closure);
+    $restored = $codec->unserialize($serialized);
+
+    // The restored closure should work correctly
+    expect($restored())->toBe(2);
+});

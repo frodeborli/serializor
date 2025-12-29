@@ -46,10 +46,7 @@ class AnonymousClassTransformer implements TransformerInterface
 
     public function transform(mixed $value): mixed
     {
-        if (!$this->transforms($value)) {
-            throw new SerializerError("Can't transform " . get_debug_type($value));
-            return false;
-        }
+        \assert($this->transforms($value), "Can't transform " . get_debug_type($value));
         $ro = new ReflectionObject($value);
 
         $frozen = new Stasis('class@anonymous');
@@ -64,9 +61,7 @@ class AnonymousClassTransformer implements TransformerInterface
 
     public function resolve(mixed $value): mixed
     {
-        if (!($value instanceof Stasis) || $value->getClassName() !== 'class@anonymous') {
-            throw new SerializerError("Can't transform " . get_debug_type($value));
-        }
+        \assert($value instanceof Stasis && $value->getClassName() === 'class@anonymous', "Can't resolve " . get_debug_type($value));
 
         $hash = $value->p['|hash'];
 

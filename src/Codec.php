@@ -83,20 +83,13 @@ class Codec
     private bool $inWeakContext = false;
 
     /**
-     * @param string|null $secret       A string secret which is shared among applications serializing and unserializing
+     * @param string $secret       A string secret for HMAC signing. Empty string disables signing.
+     *                             Use Serializor::getMachineSecret() for IPC scenarios requiring signing.
      * @param array|null  $transformers Custom set of transformers (overrides the default transformers)
-     *
-     * @return void
-     *
-     * @throws SerializerError if unable to automatically detect a secret
      */
-    public function __construct(?string $secret = null, ?array $transformers = null)
+    public function __construct(string $secret = '', ?array $transformers = null)
     {
-        if ($secret !== null) {
-            $this->secret = $secret;
-        } else {
-            $this->secret = Serializor::getMachineSecret();
-        }
+        $this->secret = $secret;
         foreach ($transformers ?? Serializor::getDefaultTransformers() as $transformer) {
             $this->addTransformer($transformer);
         }
@@ -219,9 +212,7 @@ class Codec
      */
     protected function &transform(mixed &$source, array $path, string|int|null $key): mixed
     {
-        if ($source === null || \is_scalar($source)) {
-            throw new SerializerError('Trying to encode NULL or scalar');
-        }
+        \assert(!($source === null || \is_scalar($source)), 'Trying to encode NULL or scalar');
         if ($key !== null) {
             $path[] = $key;
         }
@@ -229,12 +220,8 @@ class Codec
         $referenceId = ReflectionReference::fromArrayElement($sourceWrap, 0)->getId();
 
         if (isset($this->referenceSources[$referenceId])) {
-            if ($this->referenceSources[$referenceId][0] === $sourceWrap[0]) {
-                // This reference definitely targets the same value
-                return $this->referenceTargets[$referenceId];
-            } else {
-                throw new LogicException('The source value has changed during serialization, and this is a fatal problem');
-            }
+            \assert($this->referenceSources[$referenceId][0] === $sourceWrap[0], 'The source value has changed during serialization');
+            return $this->referenceTargets[$referenceId];
         }
 
         $this->referenceSources[$referenceId] = &$sourceWrap;
@@ -293,10 +280,8 @@ class Codec
             $this->referenceTargets[$referenceId] = &$target;
 
             return $target;
-        } catch (Throwable $e) {
-            /*
-             * This value can't be serialized using native serialization, so we must use recursive approach
-             */
+        } catch (Throwable) {
+            // This value can't be serialized using native serialization, so we must use recursive approach
         }
 
         // Try to use a transformer
