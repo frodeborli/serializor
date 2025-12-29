@@ -582,3 +582,42 @@ test('closure capturing self-referencing array with nested closure', function ()
     // The restored closure should work correctly
     expect($restored())->toBe(2);
 });
+
+test('same closure in array is serialized once and preserves identity', function () {
+    $a = fn() => 42;
+    $b = [$a, $a];
+
+    $codec = new Codec('secret');
+    $serialized = $codec->serialize($b);
+
+    // Verify only one ClosureStasis in serialized string (second is a reference)
+    expect(substr_count($serialized, 'ClosureStasis'))->toBe(1);
+
+    $restored = $codec->unserialize($serialized);
+
+    // Both array elements should be the same closure instance
+    expect($restored[0])->toBe($restored[1]);
+    expect($restored[0]())->toBe(42);
+    expect($restored[1]())->toBe(42);
+});
+
+test('closure capturing object that is also directly in same structure', function () {
+    $container = new stdClass();
+    $container->closure = fn() => $container->value;
+    $container->value = 100;
+
+    $data = [$container, $container->closure];
+
+    $codec = new Codec('secret');
+    $serialized = $codec->serialize($data);
+    $restored = $codec->unserialize($serialized);
+
+    // The closure should work with the restored container
+    expect($restored[0])->toBeInstanceOf(stdClass::class);
+    expect($restored[0]->value)->toBe(100);
+    expect($restored[1]())->toBe(100);
+
+    // The closure should reference the same container instance
+    $restored[0]->value = 200;
+    expect($restored[1]())->toBe(200);
+});

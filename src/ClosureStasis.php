@@ -174,11 +174,52 @@ final class ClosureStasis extends Stasis
                 self::$codeMakers[$hash] = require(ClosureStream::STREAM_PROTO . '://' . $code);
             }
 
-            $use = $this->use;
-            $thisObject = $this->this;
-            $scopeClass = $thisObject !== null ? \get_class($thisObject) : $this->scope;
+            // Check if any dependency is still unresolved (circular reference case)
+            $hasPending = false;
+            foreach ($this->use as $v) {
+                if ($v instanceof Stasis && !$v->hasInstance()) {
+                    $hasPending = true;
+                    break;
+                }
+            }
+            if (!$hasPending && $this->this instanceof Stasis && !$this->this->hasInstance()) {
+                $hasPending = true;
+            }
 
-            $result = self::$codeMakers[$hash]($use, $thisObject, $scopeClass);
+            if ($hasPending) {
+                // Create a lazy wrapper that resolves on first call
+                $stasis = $this;
+                $codeMaker = self::$codeMakers[$hash];
+                $realClosure = null;
+                $result = function (...$args) use ($stasis, $codeMaker, &$realClosure) {
+                    if ($realClosure === null) {
+                        $use = [];
+                        foreach ($stasis->use as $k => $v) {
+                            $use[$k] = ($v instanceof Stasis) ? $v->getInstance() : $v;
+                        }
+                        $thisObj = $stasis->this;
+                        if ($thisObj instanceof Stasis) {
+                            $thisObj = $thisObj->getInstance();
+                        }
+                        $scope = $thisObj !== null ? \get_class($thisObj) : $stasis->scope;
+                        $realClosure = $codeMaker($use, $thisObj, $scope);
+                    }
+                    return $realClosure(...$args);
+                };
+            } else {
+                // All dependencies resolved - build the closure directly
+                $use = [];
+                foreach ($this->use as $k => $v) {
+                    $use[$k] = ($v instanceof Stasis) ? $v->getInstance() : $v;
+                }
+                $thisObject = $this->this;
+                if ($thisObject instanceof Stasis) {
+                    $thisObject = $thisObject->getInstance();
+                }
+                $scopeClass = $thisObject !== null ? \get_class($thisObject) : $this->scope;
+
+                $result = self::$codeMakers[$hash]($use, $thisObject, $scopeClass);
+            }
         }
 
         $this->setInstance($result);
