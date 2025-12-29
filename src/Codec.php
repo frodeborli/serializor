@@ -98,14 +98,21 @@ class Codec
             }
         }
 
+        // Force Stasis path for types with broken native serialization in older PHP
+        $forceStasis = ($value instanceof \SplHeap) || ($value instanceof \SplPriorityQueue);
+
+        $this->encodedObjects = new WeakMap();
+        $this->referenceSources = [];
+        $this->referenceTargets = [];
+        $this->referenceCallbacks = [];
+        $this->shortcuts = [];
+        $this->stronglyReferenced = [];
+        $this->inWeakContext = false;
+
         try {
-            $this->encodedObjects = new WeakMap();
-            $this->referenceSources = [];
-            $this->referenceTargets = [];
-            $this->referenceCallbacks = [];
-            $this->shortcuts = [];
-            $this->stronglyReferenced = [];
-            $this->inWeakContext = false;
+            if ($forceStasis) {
+                throw new LogicException('Type requires special handling');
+            }
             $result = \serialize($value);
         } catch (Throwable) {
             $v = [&$value];
@@ -212,8 +219,13 @@ class Codec
         // Try native serialization first
         try {
             $serialized = serialize($source);
-            // Some types need special handling
-            if (\str_contains($serialized, 'SplObjectStorage') || \str_contains($serialized, 'WeakReference')) {
+            // Some types need special handling (broken in older PHP or need weak semantics)
+            if (\str_contains($serialized, 'SplObjectStorage')
+                || \str_contains($serialized, 'WeakReference')
+                || \str_contains($serialized, 'SplMaxHeap')
+                || \str_contains($serialized, 'SplMinHeap')
+                || \str_contains($serialized, 'SplPriorityQueue')
+            ) {
                 throw new LogicException('Type requires special handling');
             }
             $target = $source;
@@ -284,6 +296,24 @@ class Codec
             foreach ($data as $i => &$d) {
                 if (!\is_scalar($d) && $d !== null) {
                     $data[$i] = &$this->transform($d, $path, 'd' . $i);
+                }
+            }
+        } elseif ($target instanceof SplHeapStasis) {
+            $items = &$target->getItems();
+            foreach ($items as $i => &$item) {
+                if (!\is_scalar($item) && $item !== null) {
+                    $items[$i] = &$this->transform($item, $path, 'h' . $i);
+                }
+            }
+        } elseif ($target instanceof SplPriorityQueueStasis) {
+            $items = &$target->getItems();
+            foreach ($items as $i => &$item) {
+                // Transform both data and priority (priority could be an object)
+                if (!\is_scalar($item['data']) && $item['data'] !== null) {
+                    $items[$i]['data'] = &$this->transform($item['data'], $path, 'pq' . $i . 'd');
+                }
+                if (!\is_scalar($item['priority']) && $item['priority'] !== null) {
+                    $items[$i]['priority'] = &$this->transform($item['priority'], $path, 'pq' . $i . 'p');
                 }
             }
         } elseif ($target instanceof AnonymousClassStasis) {
@@ -437,6 +467,23 @@ class Codec
             foreach ($data as &$d) {
                 if (\is_array($d) || $d instanceof Stasis) {
                     $this->resolve($d);
+                }
+            }
+        } elseif ($source instanceof SplHeapStasis) {
+            $items = &$source->getItems();
+            foreach ($items as &$item) {
+                if (\is_array($item) || $item instanceof Stasis) {
+                    $this->resolve($item);
+                }
+            }
+        } elseif ($source instanceof SplPriorityQueueStasis) {
+            $items = &$source->getItems();
+            foreach ($items as &$item) {
+                if (\is_array($item['data']) || $item['data'] instanceof Stasis) {
+                    $this->resolve($item['data']);
+                }
+                if (\is_array($item['priority']) || $item['priority'] instanceof Stasis) {
+                    $this->resolve($item['priority']);
                 }
             }
         } elseif ($source instanceof AnonymousClassStasis) {

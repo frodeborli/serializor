@@ -7,6 +7,8 @@ namespace Serializor;
 use Closure;
 use ReflectionClass;
 use ReflectionFunction;
+use SplHeap;
+use SplPriorityQueue;
 use WeakMap;
 use WeakReference;
 use SplObjectStorage;
@@ -78,6 +80,18 @@ abstract class Stasis
         // SplObjectStorage
         if ($value instanceof SplObjectStorage) {
             return SplObjectStorageStasis::fromStorage($value);
+        }
+
+        // SplHeap subclasses (SplMaxHeap, SplMinHeap)
+        // Note: PHP 8.5 adds __serialize() but older versions don't have it
+        if ($value instanceof SplHeap) {
+            return SplHeapStasis::fromHeap($value);
+        }
+
+        // SplPriorityQueue
+        // Note: PHP 8.5 adds __serialize() but older versions don't have it
+        if ($value instanceof SplPriorityQueue) {
+            return SplPriorityQueueStasis::fromQueue($value);
         }
 
         // Anonymous classes
