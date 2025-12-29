@@ -99,6 +99,16 @@ final class AnonymousClassStasis extends Stasis
         }
 
         $instance = self::$classMakerCache[$this->hash]();
+
+        // Resolve any remaining Stasis objects in props before setting typed properties.
+        // This handles circular references where the reference chain update didn't complete
+        // before getInstance() was called.
+        foreach ($this->props as $k => $v) {
+            if ($v instanceof Stasis) {
+                $this->props[$k] = $v->getInstance();
+            }
+        }
+
         Stasis::setObjectProperties($instance, $this->props);
 
         $this->setInstance($instance);

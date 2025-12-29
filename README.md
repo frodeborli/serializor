@@ -128,8 +128,12 @@ See [tests/Transformers/CustomTransformerTest.php](tests/Transformers/CustomTran
 | WeakReference / WeakMap | Yes | Yes | No |
 | SplObjectStorage | Yes | Yes | No |
 | HMAC signing | Yes | Yes | Yes |
+| Test coverage | 269 tests | ~70 tests | ~130 tests |
 
-**Serializor's advantage**: Works with typed readonly properties and third-party objects without any class modifications.
+**Serializor's advantages**:
+- Works with typed readonly properties and third-party objects without any class modifications
+- Most comprehensive test suite covering edge cases from opis/closure GitHub issues
+- Supports PHP 8.2-8.5 features including property hooks and pipe operator
 
 ## Known Limitations
 

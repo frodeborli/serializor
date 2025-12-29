@@ -396,8 +396,13 @@ class Codec
         }
     }
 
-    private function resolve(array|Stasis &$source): void
+    private function resolve(mixed &$source): void
     {
+        // If already resolved to a non-Stasis/non-array value, nothing to do
+        if (!\is_array($source) && !($source instanceof Stasis)) {
+            return;
+        }
+
         $sourceWrap = [&$source];
         $referenceId = ReflectionReference::fromArrayElement($sourceWrap, 0)->getId();
         if (isset($this->referenceCallbacks[$referenceId]) || \array_key_exists($referenceId, $this->referenceCallbacks)) {
@@ -419,6 +424,11 @@ class Codec
         } else {
             // Resolve children first for Stasis types with nested data
             $this->resolveStasisChildren($source);
+
+            // Source might have been resolved via reference chain during child resolution
+            if (!($source instanceof Stasis)) {
+                return;
+            }
 
             // Get the instance
             $source = $source->getInstance();

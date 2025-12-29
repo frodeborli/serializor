@@ -63,6 +63,10 @@ final class ObjectStasis extends Stasis
                 if ($rp->isStatic() || !$rp->isInitialized($source)) {
                     continue;
                 }
+                // PHP 8.4+: Skip virtual properties (computed properties with only get hook)
+                if (\method_exists($rp, 'isVirtual') && $rp->isVirtual()) {
+                    continue;
+                }
                 $frozen->p[$name] = $rp->getValue($source);
             }
             $objectVars = \get_object_vars($source);
@@ -125,6 +129,10 @@ final class ObjectStasis extends Stasis
                     if ($rp->isStatic()) {
                         continue;
                     }
+                    // PHP 8.4+: Skip virtual properties (computed properties with only get hook)
+                    if (\method_exists($rp, 'isVirtual') && $rp->isVirtual()) {
+                        continue;
+                    }
                     if (!isset($properties[$name]) && !\array_key_exists($name, $properties)) {
                         continue;
                     }
@@ -143,6 +151,32 @@ final class ObjectStasis extends Stasis
                 }
             }, $newInstance, $className)();
         }
+
+        // Restore dynamic properties (not in reflection but in serialized data)
+        $reflectedProps = Reflect::getReflectionProperties($this->c);
+        foreach ($this->p as $name => $value) {
+            // Skip if it's a reflected property (already handled above)
+            if (isset($reflectedProps[$name])) {
+                continue;
+            }
+            // Skip prefixed properties (parent class private properties)
+            if (\str_contains($name, "\0")) {
+                continue;
+            }
+            // Set dynamic property
+            if ($value instanceof Stasis) {
+                if ($value->hasInstance()) {
+                    $newInstance->$name = $value->getInstance();
+                } else {
+                    $value->whenResolved(function ($instance) use ($newInstance, $name) {
+                        $newInstance->$name = $instance;
+                    });
+                }
+            } else {
+                $newInstance->$name = $value;
+            }
+        }
+
         $this->setInstance($newInstance);
 
         while (!empty($deferred)) {

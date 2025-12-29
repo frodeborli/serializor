@@ -197,6 +197,10 @@ abstract class Stasis
                 if ($rp->isStatic()) {
                     continue;
                 }
+                // PHP 8.4+: Skip virtual properties (computed properties with only get hook)
+                if (\method_exists($rp, 'isVirtual') && $rp->isVirtual()) {
+                    continue;
+                }
                 if ($rp->isInitialized($value)) {
                     $result[$prefix . $rp->getName()] = $rp->getValue($value);
                 }
@@ -222,6 +226,10 @@ abstract class Stasis
             \Closure::bind(function () use ($value, $cro, $properties, $prefix) {
                 foreach ($cro->getProperties() as $rp) {
                     if ($rp->isStatic()) {
+                        continue;
+                    }
+                    // PHP 8.4+: Skip virtual properties (computed properties with only get hook)
+                    if (\method_exists($rp, 'isVirtual') && $rp->isVirtual()) {
                         continue;
                     }
                     $name = $prefix . $rp->getName();

@@ -116,7 +116,20 @@ final class ClosureStasis extends Stasis
 
         $frozen->file = $rf->getFileName();
         $frozen->line = $rf->getStartLine();
-        $frozen->namespace = $rf->getNamespaceName();
+
+        // PHP 8.5 changed getNamespaceName() to return empty for closures.
+        // Fall back to extracting namespace from the scope class name.
+        $namespace = $rf->getNamespaceName();
+        if ($namespace === '') {
+            $closureScopeClass = $rf->getClosureScopeClass();
+            if ($closureScopeClass !== null) {
+                $className = $closureScopeClass->getName();
+                $lastSlash = \strrpos($className, '\\');
+                $namespace = $lastSlash !== false ? \substr($className, 0, $lastSlash) : '';
+            }
+        }
+        $frozen->namespace = $namespace;
+
         $frozen->this = $rf->getClosureThis();
         $closureScopeClass = $rf->getClosureScopeClass();
         $frozen->scope = $closureScopeClass?->getName();
