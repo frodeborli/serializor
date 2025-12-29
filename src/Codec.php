@@ -371,7 +371,8 @@ class Codec
                 }
             }
 
-            $result = unserialize($value);
+            // Detect and handle foreign serialization formats
+            $result = $this->unserializeWithCompatibility($value);
 
             // Handle standalone Stasis (e.g., CallableStasis for named functions)
             if ($result instanceof Stasis) {
@@ -394,6 +395,85 @@ class Codec
             $this->referenceTargets = [];
             $this->referenceCallbacks = [];
         }
+    }
+
+    /**
+     * Unserialize with compatibility detection for Laravel and Opis formats.
+     * This provides an upgrade path for users migrating from those libraries.
+     */
+    private function unserializeWithCompatibility(string $value): mixed
+    {
+        // Detect Opis v4 format (uses Opis\Closure\Box)
+        if (\str_contains($value, 'Opis\\Closure\\Box') || \str_contains($value, 'Opis\\Closure\\ClosureInfo')) {
+            if (!\class_exists('Opis\\Closure\\Serializer')) {
+                throw new SerializerError('Data was serialized with opis/closure. Install opis/closure to unserialize it.');
+            }
+            return \Opis\Closure\Serializer::unserialize($value);
+        }
+
+        // Detect Laravel format (uses Laravel\SerializableClosure\SerializableClosure)
+        if (\str_contains($value, 'Laravel\\SerializableClosure\\SerializableClosure')) {
+            if (!\class_exists('Laravel\\SerializableClosure\\SerializableClosure')) {
+                throw new SerializerError('Data was serialized with laravel/serializable-closure. Install it to unserialize.');
+            }
+            $result = \unserialize($value);
+            return $this->unwrapForeignClosures($result);
+        }
+
+        // Detect Opis v3 format (uses Opis\Closure\SerializableClosure directly)
+        if (\str_contains($value, 'Opis\\Closure\\SerializableClosure')) {
+            if (!\class_exists('Opis\\Closure\\SerializableClosure')) {
+                throw new SerializerError('Data was serialized with opis/closure. Install opis/closure to unserialize it.');
+            }
+            $result = \unserialize($value);
+            return $this->unwrapForeignClosures($result);
+        }
+
+        // Standard unserialize for Serializor format
+        return \unserialize($value);
+    }
+
+    /**
+     * Unwrap closures serialized by Laravel or Opis into native Closure objects.
+     * @param array<int,true> $visited Object IDs already visited (cycle detection)
+     */
+    private function unwrapForeignClosures(mixed $value, array &$visited = []): mixed
+    {
+        // Laravel\SerializableClosure\SerializableClosure
+        if (\is_object($value) && $value::class === 'Laravel\\SerializableClosure\\SerializableClosure') {
+            return $value->getClosure();
+        }
+
+        // Opis\Closure\SerializableClosure (v3 compatibility wrapper)
+        if (\is_object($value) && $value::class === 'Opis\\Closure\\SerializableClosure') {
+            return $value->getClosure();
+        }
+
+        // Recursively process arrays
+        if (\is_array($value)) {
+            foreach ($value as $k => $v) {
+                $value[$k] = $this->unwrapForeignClosures($v, $visited);
+            }
+            return $value;
+        }
+
+        // Recursively process object properties (including dynamic properties)
+        if (\is_object($value) && !($value instanceof Closure)) {
+            $objId = \spl_object_id($value);
+            if (isset($visited[$objId])) {
+                return $value; // Already visited, skip to prevent infinite loop
+            }
+            $visited[$objId] = true;
+
+            foreach (\get_object_vars($value) as $propName => $propValue) {
+                $unwrapped = $this->unwrapForeignClosures($propValue, $visited);
+                if ($unwrapped !== $propValue) {
+                    $value->$propName = $unwrapped;
+                }
+            }
+        }
+
+        return $value;
     }
 
     private function resolve(mixed &$source): void

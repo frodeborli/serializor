@@ -128,12 +128,29 @@ See [tests/Transformers/CustomTransformerTest.php](tests/Transformers/CustomTran
 | WeakReference / WeakMap | Yes | Yes | No |
 | SplObjectStorage | Yes | Yes | No |
 | HMAC signing | Yes | Yes | Yes |
-| Test coverage | 269 tests | ~70 tests | ~130 tests |
+| Test coverage | 277 tests | ~70 tests | ~130 tests |
 
 **Serializor's advantages**:
 - Works with typed readonly properties and third-party objects without any class modifications
 - Most comprehensive test suite covering edge cases from opis/closure GitHub issues
 - Supports PHP 8.2-8.5 features including property hooks and pipe operator
+
+## Migrating from Laravel or Opis
+
+Serializor can unserialize data that was serialized by `laravel/serializable-closure` or `opis/closure`, providing a seamless upgrade path. The original library must remain installed for deserialization to work:
+
+```php
+use Serializor\Serializor;
+
+// Data serialized with Laravel or Opis can be unserialized with Serializor
+// (requires the original library to be installed)
+$closure = Serializor::unserialize($legacySerializedData);
+
+// Re-serialize with Serializor - no longer requires the old library
+$newSerializedData = Serializor::serialize($closure);
+```
+
+This allows gradual migration: keep the old library installed while transitioning, then remove it once all stored data has been re-serialized with Serializor.
 
 ## Known Limitations
 
