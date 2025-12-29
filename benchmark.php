@@ -61,7 +61,7 @@ echo "\n";
 $iterations = [
     'simple_closure' => 500,
     'closure_with_use' => 500,
-    'complex_closure' => 500,
+    'closure_with_multiple_captures' => 500,
     'closure_with_object' => 500,
     'closure_with_nested_closures' => 500,
     'named_function' => 500,
@@ -258,7 +258,7 @@ function benchmark(callable $serializeFn, callable $unserializeFn, string $type,
 $testCaseTypes = [
     'simple_closure' => 'simple',
     'closure_with_use' => 'with_use',
-    'complex_closure' => 'complex',
+    'closure_with_multiple_captures' => 'complex',
     'closure_with_object' => 'with_object',
     'closure_with_nested_closures' => 'nested',
     'named_function' => 'named_function',
@@ -305,7 +305,8 @@ foreach ($testCaseTypes as $caseName => $closureType) {
                 $result['unserialize_time']
             );
         } catch (Throwable $e) {
-            echo "    $libName: ERROR - " . $e->getMessage() . "\n";
+            $results[$libName][$caseName] = ['error' => $e->getMessage()];
+            echo "    $libName: UNSUPPORTED - " . $e->getMessage() . "\n";
         }
     }
     echo "\n";
@@ -411,20 +412,37 @@ $md .= "- Serializor: {$versions['serializor']}\n";
 $md .= "- Opis/Closure: {$versions['opis']}\n";
 $md .= "- Laravel Serializable Closure: {$versions['laravel']}\n\n";
 
+$md .= "## Library Comparison\n\n";
+$md .= "| Feature | Serializor | Opis | Laravel |\n";
+$md .= "|---------|------------|------|--------|\n";
+$md .= "| Transparent serialization | ✅ | ✅ | ❌ (requires wrapper) |\n";
+$md .= "| Named functions | ✅ | ✅ | ❌ |\n";
+$md .= "| First-class callables | ✅ | ✅ | ❌ |\n";
+$md .= "| Objects containing closures | ✅ | ✅ | ❌ |\n";
+$md .= "| Closures with shared state | ✅ | ✅ | ❌ |\n";
+$md .= "\n";
+$md .= "> **Note:** Laravel's SerializableClosure requires explicitly wrapping each closure before serialization.\n";
+$md .= "> It cannot transparently serialize data structures containing closures, objects with closure properties,\n";
+$md .= "> or first-class callables (e.g., `strlen(...)`, `\$obj->method(...)`).\n\n";
+
 $md .= "## Summary\n\n";
 $md .= "| Test Case | Serializor | Opis | Laravel | Winner (serialize) |\n";
 $md .= "|-----------|------------|------|---------|--------------------|\n";
 
 foreach ($results['serializor'] as $caseName => $result) {
-    $serializorTime = $result['serialize_time'] ?? null;
-    $opisTime = $results['opis'][$caseName]['serialize_time'] ?? null;
-    $laravelTime = $results['laravel'][$caseName]['serialize_time'] ?? null;
+    $serializorResult = $results['serializor'][$caseName] ?? [];
+    $opisResult = $results['opis'][$caseName] ?? [];
+    $laravelResult = $results['laravel'][$caseName] ?? [];
 
-    $serializorStr = $serializorTime !== null ? sprintf('%.1fms', $serializorTime) : 'N/A';
-    $opisStr = $opisTime !== null ? sprintf('%.1fms', $opisTime) : 'N/A';
-    $laravelStr = $laravelTime !== null ? sprintf('%.1fms', $laravelTime) : 'ERROR';
+    $serializorTime = $serializorResult['serialize_time'] ?? null;
+    $opisTime = $opisResult['serialize_time'] ?? null;
+    $laravelTime = $laravelResult['serialize_time'] ?? null;
 
-    // Determine winner
+    $serializorStr = isset($serializorResult['error']) ? '❌' : ($serializorTime !== null ? sprintf('%.1fms', $serializorTime) : 'N/A');
+    $opisStr = isset($opisResult['error']) ? '❌' : ($opisTime !== null ? sprintf('%.1fms', $opisTime) : 'N/A');
+    $laravelStr = isset($laravelResult['error']) ? '❌' : ($laravelTime !== null ? sprintf('%.1fms', $laravelTime) : 'N/A');
+
+    // Determine winner (only from successful runs)
     $times = array_filter([
         'Serializor' => $serializorTime,
         'Opis' => $opisTime,
@@ -458,10 +476,14 @@ foreach ($results['serializor'] as $caseName => $result) {
             $serialize = sprintf('%.2fms', $libResult['serialize_time']);
             $unserialize = sprintf('%.2fms', $libResult['unserialize_time']);
             $total = sprintf('%.2fms', $libResult['serialize_time'] + $libResult['unserialize_time']);
+        } elseif ($libResult && isset($libResult['error'])) {
+            $serialize = '❌ Unsupported';
+            $unserialize = '❌';
+            $total = '❌';
         } else {
-            $serialize = 'ERROR';
-            $unserialize = 'ERROR';
-            $total = 'ERROR';
+            $serialize = 'N/A';
+            $unserialize = 'N/A';
+            $total = 'N/A';
         }
         $libName = ucfirst($lib);
         $md .= "| {$libName} | {$serialize} | {$unserialize} | {$total} |\n";
