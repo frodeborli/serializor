@@ -102,32 +102,19 @@ Serializor::setDefaultSecret('your-shared-secret');
 
 When a secret is set, all serialized data is HMAC-signed to prevent tampering.
 
-## Custom Transformers
+## Custom Serializers
 
-Extend Serializor to handle custom types by implementing `TransformerInterface`:
+For types that need special handling (like database connections that must be reconnected), you can register custom serialization logic:
 
 ```php
-use Serializor\TransformerInterface;
 use Serializor\Stasis;
 
-class MyResourceTransformer implements TransformerInterface {
-    public function transforms(mixed $value): bool {
-        return $value instanceof MyResource;
-    }
-
-    public function resolves(Stasis $value): bool {
-        return $value->getClassName() === MyResource::class;
-    }
-
-    public function transform(mixed $value): Stasis {
-        // Convert to serializable Stasis
-    }
-
-    public function resolve(Stasis $value): mixed {
-        // Restore from Stasis
-    }
-}
+Stasis::registerFactory(PDO::class, function (PDO $pdo): MyPDOStasis {
+    return MyPDOStasis::fromPDO($pdo);
+});
 ```
+
+See [tests/Transformers/CustomTransformerTest.php](tests/Transformers/CustomTransformerTest.php) for a complete example.
 
 ## Comparison with Other Libraries
 

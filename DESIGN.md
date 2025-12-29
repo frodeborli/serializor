@@ -1,19 +1,33 @@
 # Design Notes: Closure Serialization Architecture
 
-This document describes the architectural decisions in Serializor and compares them with similar approaches that later appeared in other PHP closure serialization libraries, particularly Opis/Closure v4.
+This document describes the architectural decisions in Serializor.
+
+## Background
+
+In 2024, Opis/Closure v4 was being developed as a complete rewrite using PHP's FFI (Foreign Function Interface) extension. This posed a problem for web applications: FFI is not enabled by default in PHP web requests for security reasons.
+
+Laravel recognized this issue and [forked Opis v3](https://github.com/laravel/serializable-closure):
+
+> *"This project is a fork of the excellent opis/closure: 3.x package. At Laravel, we decided to fork this package as the upcoming version 4.x is a complete rewrite on top of the FFI extension. As Laravel is a web framework, and FFI is not enabled by default in web requests, this fork allows us to keep using the 3.x series while adding support for new PHP versions."*
+
+Rather than forking v3, Serializor was created as a new native PHP implementation that solved the underlying problems differently.
 
 ## Timeline
 
 | Date | Event |
 |------|-------|
 | January 27, 2023 | Opis/Closure v3.6.3 released |
-| **September 5, 2024** | **Serializor v1.0.0 released** |
-| December 28, 2024 | Opis/Closure v4.0.0 released ("complete rewrite") |
+| 2024 | Opis v4 development begins (FFI-based) |
+| 2024 | Laravel forks Opis v3 due to FFI concerns |
+| **September 5, 2024** | **Serializor v1.0.0 released** (native PHP) |
+| December 28, 2024 | Opis/Closure v4.0.0 released (native PHP, no FFI) |
 | January 7, 2025 | Opis v4.2.0 adds anonymous class support |
+
+Notably, when Opis v4 was finally released, it no longer used FFI—it was rewritten in native PHP with an architecture similar to Serializor.
 
 ## Core Design Decisions
 
-Serializor was built around several non-trivial architectural choices that solve fundamental challenges in PHP serialization. These same patterns later appeared in Opis/Closure v4.
+Serializor was built around several architectural choices that solve fundamental challenges in PHP serialization.
 
 ### 1. Direct Serialization API (No Wrapper Classes)
 
@@ -282,7 +296,7 @@ Opis\Closure\Serializer::addResolver(...);
 | Scope tracking | Basic | `$usedThis`, `$usedStatic` | `$thisRef`, `$scopeRef` |
 | Factory reconstruction | `eval()` | `extract()` + `Closure::bind()` | `extract()` + `Closure::bind()` |
 | Anonymous classes | ❌ | Source extraction | Source extraction (v4.2) |
-| Custom handlers | ❌ | `TransformerInterface` | Custom serializers |
+| Custom handlers | ❌ | `registerFactory()` | `register()` |
 
 ## Why These Decisions Matter
 
