@@ -9,7 +9,30 @@
 [![Packagist Version](https://img.shields.io/packagist/v/frodeborli/serializor)](https://packagist.org/packages/frodeborli/serializor)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/frodeborli/serializor)](https://packagist.org/packages/frodeborli/serializor)
 
+**TL;DR:** Serialize closures and anonymous classes in PHP without wrapper classes or code modifications.
+
 **Serializor** is a PHP serialization library designed to simplify the serialization of closures, anonymous classes, and complex data structures. It handles scenarios typically challenging for native PHP serialization without requiring modifications to existing code. Whether for distributed computing, caching objects, or job queuing, Serializor ensures that complex data types are serialized and deserialized correctly, preserving their behavior and state.
+
+## Quick Start
+
+```bash
+composer require frodeborli/serializor
+```
+
+```php
+use Serializor\Serializor;
+
+// Optional: Set a secret for cross-machine serialization
+Serializor::setDefaultSecret('my-shared-secret');
+
+// Serialize a closure
+$closure = fn($name) => "Hello, $name!";
+$serialized = Serializor::serialize($closure);
+
+// Unserialize and invoke
+$restored = Serializor::unserialize($serialized);
+echo $restored('World'); // Output: Hello, World!
+```
 
 ## Advanced Use Cases Supported by Serializor
 
