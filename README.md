@@ -165,9 +165,9 @@ Four months later, Opis/Closure v4.0.0 (December 2024) was released as a "comple
 
 ## Performance
 
-![Serialization](docs/serialization-benchmark.png)
+![Serialization](docs/serialization-benchmark.svg)
 
-![Unserialization](docs/unserialization-benchmark.png)
+![Unserialization](docs/unserialization-benchmark.svg)
 
 ## License
 
