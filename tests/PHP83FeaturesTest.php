@@ -46,6 +46,18 @@ test('closure from class with Override attribute', function (): void {
     expect($result())->toBe('child:value');
 })->skip(PHP_VERSION_ID < 80300, 'Requires PHP 8.3+');
 
+// Laravel issue #110: first-class callable from method with method-only attribute
+test('first-class callable from method with Override attribute', function (): void {
+    $obj = new \Tests\Fixtures\PHP83\OverrideClass();
+
+    // Create closure using first-class callable syntax
+    $fn = $obj->getValue(...);
+
+    $result = Util::s($fn);
+
+    expect($result())->toBe('child:value');
+})->skip(PHP_VERSION_ID < 80300, 'Requires PHP 8.3+');
+
 // ============================================================================
 // Dynamic class constant fetch (PHP 8.3)
 // ============================================================================
