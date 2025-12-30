@@ -316,6 +316,13 @@ class Codec
                     $items[$i]['priority'] = &$this->transform($item['priority'], $path, 'pq' . $i . 'p');
                 }
             }
+        } elseif ($target instanceof SplFixedArrayStasis) {
+            $elements = &$target->getElements();
+            foreach ($elements as $i => &$v) {
+                if (!\is_scalar($v) && $v !== null) {
+                    $elements[$i] = &$this->transform($v, $path, 'fa' . $i);
+                }
+            }
         } elseif ($target instanceof AnonymousClassStasis) {
             $props = &$target->getProps();
             foreach ($props as $k => &$v) {

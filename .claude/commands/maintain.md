@@ -16,18 +16,24 @@ If any recent runs failed, investigate and fix before proceeding.
 
 ## 2. Check PHP Version Support
 
-Current support: PHP 8.2+ (tested on 8.2, 8.3, 8.4, 8.5)
+**Policy**: Support all PHP versions available in Ubuntu LTS releases (minimum PHP 8.1).
+
+Current support: PHP 8.1+ (tested on 8.1, 8.2, 8.3, 8.4, 8.5)
 
 Check www.php.net for:
 - New PHP versions released or in RC
 - PHP versions reaching end-of-life
 
-If a new PHP version is available:
-1. Add it to `.github/workflows/tests.yml` matrix
-2. Create test fixtures for new features if needed
-3. Run tests locally first
-4. Update composer.json if minimum version changes
-5. Update README.md version badge
+When adding/removing PHP version support:
+1. Add new versions to `.github/workflows/tests.yml` matrix
+2. Create test fixtures for new syntax features (in `tests/Fixtures/PHP{version}/`)
+3. Use conditional loading for version-specific syntax
+4. Run tests locally on all supported versions first
+5. Update composer.json if minimum version changes
+6. Update README.md version badge
+
+Note: PHP 8.1 requires special handling for some types (e.g., SplFixedArray lacks
+`__serialize()`/`__unserialize()` before 8.2). Always test on minimum supported version.
 
 ## 3. Check Serializor Issues & PRs
 

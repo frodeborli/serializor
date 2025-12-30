@@ -11,6 +11,7 @@ use SplHeap;
 use SplPriorityQueue;
 use WeakMap;
 use WeakReference;
+use SplFixedArray;
 use SplObjectStorage;
 
 /**
@@ -92,6 +93,11 @@ abstract class Stasis
         // Note: PHP 8.5 adds __serialize() but older versions don't have it
         if ($value instanceof SplPriorityQueue) {
             return SplPriorityQueueStasis::fromQueue($value);
+        }
+
+        // SplFixedArray on PHP < 8.2 (8.2+ has __serialize()/__unserialize())
+        if ($value instanceof SplFixedArray && !\method_exists($value, '__serialize')) {
+            return SplFixedArrayStasis::fromArray($value);
         }
 
         // Anonymous classes
